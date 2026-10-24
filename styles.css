@@ -506,6 +506,50 @@ button.card:hover {
   width: min(100%, 340px);
 }
 
+.power-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 0.15rem;
+  margin: 0.2rem 0 1rem;
+}
+
+.tt-hex.power-hex {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: 96px;
+  height: 108px;
+  transform: none;
+  filter: grayscale(1) brightness(0.45);
+}
+
+.tt-hex.power-hex .tt-hex-well i {
+  height: 100%;
+}
+
+.tt-hex.power-hex strong {
+  font-size: 0.5rem;
+  letter-spacing: 0.04em;
+}
+
+.tt-hex.power-hex.is-on {
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.28));
+}
+
+.tt-hex.power-hex:active {
+  transform: scale(0.94);
+}
+
+.power-actions {
+  width: min(100%, 520px);
+  grid-template-columns: 1fr 1fr;
+}
+
+.power-actions .mode-btn:last-child {
+  grid-column: 1 / -1;
+}
+
 .mode-btn {
   font-family: var(--font-display);
   font-size: 0.95rem;
@@ -2033,6 +2077,27 @@ body.is-stamped {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), #e2e8f0 14%, #94a3b8 50%, #334155);
 }
 .tt-hex.is-gale .tt-hex-shell { stroke: #e2e8f0; }
+.tt-hex.is-ricochet .tt-hex-well i {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), #fef3c7 14%, #facc15 50%, #b45309);
+}
+.tt-hex.is-ricochet .tt-hex-shell { stroke: #fde68a; }
+.tt-hex.is-ricochet strong,
+.tt-hex.is-teleport strong {
+  font-size: 0.46rem;
+  letter-spacing: 0.04em;
+}
+.tt-hex.is-teleport .tt-hex-well i {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.45), #6d28d9 16%, #1e0533 55%, #000000);
+}
+.tt-hex.is-teleport .tt-hex-shell { stroke: #c4b5fd; }
+.tt-hex.is-grow .tt-hex-well i {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), #d9f99d 14%, #65a30d 48%, #3f6212);
+}
+.tt-hex.is-grow .tt-hex-shell { stroke: #bef264; }
+.tt-hex.is-curve .tt-hex-well i {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), #bbf7d0 14%, #22c55e 50%, #14532d);
+}
+.tt-hex.is-curve .tt-hex-shell { stroke: #86efac; }
 
 @keyframes tt-wave {
   from { transform: translateX(0); }

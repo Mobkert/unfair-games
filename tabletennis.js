@@ -8,6 +8,9 @@ const TT = (() => {
   const RIGHT_X = LW - 56;
   const BASE_SPEED = 470;
   const WIN = 3;
+  const ABILITIES = ["freeze", "flame", "weight", "triple", "mimic", "gale", "ricochet", "teleport", "grow", "curve"];
+  const enabled = {};
+  ABILITIES.forEach((id) => { enabled[id] = true; });
 
   const rootEl = document.querySelector("#tt");
   const stage = document.querySelector("#tt-root");
@@ -50,13 +53,20 @@ const TT = (() => {
     chargeAcc: [0, 0],
     ready: [null, null],
     flame: [false, false],
+    burn: 0,
     weight: [0, 0],
+    curse: [0, 0],
     triple: [0, 0],
     mimic: [false, false],
     curl: null,
     decoy: null,
     gale: null,
     spin: null,
+    ricochet: null,
+    portal: [false, false],
+    curve: [false, false],
+    grow: 0,
+    warp: null,
     pause: 0,
     winner: null,
     dead: false,
@@ -153,6 +163,11 @@ const TT = (() => {
       noise(0.16, 0.14, 0.02, 1800, 200);
       tone(160, 0.24, "sawtooth", 0.1, 0, 70);
     },
+    burn() {
+      noise(0.36, 0.28, 0, 420, 80);
+      noise(0.22, 0.16, 0.04, 1600, 240);
+      tone(220, 0.28, "sawtooth", 0.1, 0, 90);
+    },
     weight() {
       tone(90, 0.28, "sine", 0.2, 0, 48);
       noise(0.22, 0.22, 0, 180, 50);
@@ -180,6 +195,11 @@ const TT = (() => {
       tone(330, 0.32, "triangle", 0.06, 0.05, 140);
       noise(0.3, 0.1, 0, 400, 80);
     },
+    curse() {
+      tone(150, 0.34, "sawtooth", 0.12, 0, 70);
+      tone(90, 0.4, "sine", 0.14, 0.04, 40);
+      noise(0.22, 0.16, 0, 300, 80);
+    },
     gale() {
       noise(0.45, 0.24, 0, 280, 70);
       tone(110, 0.4, "sawtooth", 0.08, 0, 60);
@@ -187,6 +207,35 @@ const TT = (() => {
     galehit() {
       noise(0.2, 0.18, 0, 600, 120);
       tone(180, 0.3, "sine", 0.1, 0, 90);
+    },
+    rico() {
+      tone(680, 0.06, "square", 0.14, 0, 1240);
+      tone(1360, 0.08, "triangle", 0.08, 0.03);
+      noise(0.1, 0.2, 0, 1900, 420);
+    },
+    void() {
+      noise(0.42, 0.24, 0, 200, 40);
+      tone(62, 0.48, "sine", 0.14, 0, 34);
+      tone(140, 0.3, "triangle", 0.06, 0.04, 70);
+    },
+    warp() {
+      noise(0.32, 0.24, 0, 640, 70);
+      tone(280, 0.24, "sine", 0.12, 0, 48);
+    },
+    arrive() {
+      tone(160, 0.08, "square", 0.14, 0, 640);
+      noise(0.14, 0.2, 0, 1100, 180);
+      tone(880, 0.1, "triangle", 0.08, 0.04);
+    },
+    grow() {
+      tone(80, 0.4, "sawtooth", 0.1, 0, 180);
+      noise(0.34, 0.16, 0, 260, 70);
+      tone(220, 0.28, "triangle", 0.07, 0.06, 140);
+    },
+    curve() {
+      tone(240, 0.34, "sine", 0.12, 0, 680);
+      noise(0.26, 0.16, 0, 1100, 220);
+      tone(520, 0.16, "triangle", 0.07, 0.08);
     },
     stamp() {
       noise(0.18, 0.36, 0, 380, 55);
@@ -228,6 +277,10 @@ const TT = (() => {
     }
     if (name === "freeze") burst(world.ball.x, world.ball.y, "#7dd3fc", 24, 170, 0.55);
     if (name === "flame") burst(world.ball.x, world.ball.y, "#fb923c", 22, 210, 0.45);
+    if (name === "burn") {
+      burst(world.ball.x, world.ball.y, "#fb923c", 16, 260, 0.4);
+      burst(world.ball.x, world.ball.y, "#facc15", 10, 180, 0.32);
+    }
     if (name === "go") burst(LW / 2, LH / 2, "#ffffff", 20, 280, 0.4);
     if (name === "weight") {
       const foe = who === 0 || who === 1 ? 1 - who : seat;
@@ -238,7 +291,26 @@ const TT = (() => {
       const px = who === 1 ? RIGHT_X : LEFT_X;
       burst(px, world.paddles[who === 1 ? 1 : 0], "#c084fc", 18, 80, 0.5);
     }
+    if (name === "curse") {
+      const px = who === 1 ? RIGHT_X : LEFT_X;
+      burst(px, world.paddles[who === 1 ? 1 : 0], "#ef4444", 18, 90, 0.5);
+    }
     if (name === "gale" || name === "galehit") burst(world.gale ? world.gale.x : world.ball.x, world.gale ? world.gale.y : world.ball.y, "#e2e8f0", 20, 200, 0.4);
+    if (name === "rico") burst(world.ball.x, world.ball.y, "#facc15", 18, 280, 0.32);
+    if (name === "void") {
+      const px = who === 1 ? RIGHT_X : LEFT_X;
+      burst(px, world.paddles[who === 1 ? 1 : 0], "#6d28d9", 16, 70, 0.5);
+      burst(px, world.paddles[who === 1 ? 1 : 0], "#020617", 10, 40, 0.6);
+    }
+    if (name === "warp") burst(world.ball.x, world.ball.y, "#c084fc", 22, 220, 0.4);
+    if (name === "arrive") burst(world.ball.x, world.ball.y, "#e9d5ff", 20, 240, 0.4);
+    if (name === "grow") burst(world.ball.x, world.ball.y, "#84cc16", 18, 120, 0.5);
+    if (name === "curve") {
+      const atPaddle = who === 0 || who === 1;
+      const px = atPaddle ? (who === 1 ? RIGHT_X : LEFT_X) : world.ball.x;
+      const py = atPaddle ? world.paddles[who] : world.ball.y;
+      burst(px, py, "#86efac", 16, 150, 0.42);
+    }
   };
 
   const markCue = (name, who = -1) => {
@@ -291,6 +363,12 @@ const TT = (() => {
     world.spin = null;
     world.decoy = null;
     world.gale = null;
+    world.ricochet = null;
+    world.portal = [false, false];
+    world.curve = [false, false];
+    world.grow = 0;
+    world.warp = null;
+    world.burn = 0;
     world.triple = [0, 0];
     world.mimic = [false, false];
   };
@@ -319,6 +397,12 @@ const TT = (() => {
     world.spin = null;
     world.decoy = null;
     world.gale = null;
+    world.ricochet = null;
+    world.portal = [false, false];
+    world.curve = [false, false];
+    world.grow = 0;
+    world.warp = null;
+    world.burn = 0;
     world.triple = [0, 0];
     world.mimic = [false, false];
     world.scores[winnerSeat] += 1;
@@ -337,6 +421,7 @@ const TT = (() => {
     const py = world.paddles[player];
     const offset = clamp((world.ball.y - py) / (PAD_H / 2), -1, 1);
     world.curl = null;
+    let ignited = false;
     const tripling = world.triple[player] > 0;
     if (tripling) {
       world.triple[player] -= 1;
@@ -345,14 +430,33 @@ const TT = (() => {
     if (world.flame[player]) {
       world.speed = Math.min(BASE_SPEED * 3.1, world.speed * 1.5);
       world.flame[player] = false;
+      world.burn = 2;
+      ignited = true;
     }
     const vy = clamp(offset * world.speed * 0.72, -world.speed * 0.82, world.speed * 0.82);
     world.ball.vy = vy;
     world.ball.vx = dir * Math.sqrt(Math.max(1, world.speed * world.speed - vy * vy));
     const px = player === 0 ? LEFT_X : RIGHT_X;
-    world.ball.x = px + dir * (PAD_W / 2 + BALL + 1);
+    world.ball.x = px + dir * (PAD_W / 2 + ballR() + 1);
     world.hitLock = 0.16;
-    if (tripling && world.triple[player] > 0) {
+    if (world.portal[player]) {
+      world.portal[player] = false;
+      world.curl = null;
+      world.spin = null;
+      const next = Math.min(BASE_SPEED * 3.1, world.speed * 1.15);
+      const scale = next / Math.max(1, world.speed);
+      const foe = 1 - player;
+      const near = foe === 1 ? RIGHT_X - 170 : LEFT_X + 170;
+      const far = foe === 1 ? LW * 0.58 : LW * 0.42;
+      const x = far + (near - far) * Math.random();
+      const y = 80 + Math.random() * (LH - 160);
+      world.warp = { t: 1, x, y, vx: world.ball.vx * scale, vy: world.ball.vy * scale };
+      world.speed = next;
+      world.ball.vx = 0;
+      world.ball.vy = 0;
+      markCue("warp");
+    }
+    if (tripling && world.triple[player] > 0 && !world.warp) {
       const back = player === 0 ? -1 : 1;
       world.curl = {
         t: 0,
@@ -365,18 +469,76 @@ const TT = (() => {
       };
       markCue("wind");
     }
+    if (world.curve[player] && !world.warp) {
+      world.curve[player] = false;
+      const next = Math.min(BASE_SPEED * 3.1, world.speed * 1.2);
+      const sign = Math.random() < 0.5 ? 1 : -1;
+      const startVy = sign * next * 0.32;
+      const endVy = -sign * next * 0.36;
+      const startVx = dir * Math.sqrt(Math.max(1, next * next - startVy * startVy));
+      const endVx = dir * Math.sqrt(Math.max(1, next * next - endVy * endVy));
+      world.speed = next;
+      world.ball.vx = startVx;
+      world.ball.vy = startVy;
+      world.curl = {
+        t: 0,
+        delay: 0.06,
+        dur: 0.55,
+        bend: true,
+        fromVx: startVx,
+        toVx: endVx,
+        fromVy: startVy,
+        toVy: endVy,
+      };
+      markCue("curve");
+    } else if (world.curve[player]) world.curve[player] = false;
     if (world.mimic[player]) {
       world.mimic[player] = false;
+      const decoyVx = world.warp ? world.warp.vx : world.ball.vx;
+      const decoyVy = world.warp ? world.warp.vy : world.ball.vy;
       world.decoy = {
         x: world.ball.x,
         y: clamp(world.ball.y + (Math.random() > 0.5 ? 28 : -28), BALL, LH - BALL),
-        vx: world.ball.vx * (0.82 + Math.random() * 0.2),
-        vy: -world.ball.vy * 0.65 + (Math.random() - 0.5) * 90,
+        vx: decoyVx * (0.82 + Math.random() * 0.2),
+        vy: -decoyVy * 0.65 + (Math.random() - 0.5) * 90,
         life: 3.1,
       };
       markCue("spook");
     }
     markCue("hit");
+    if (ignited) markCue("burn");
+  };
+
+  const GROW_HOLD = 10;
+  const GROW_BLOOM = 0.48;
+  const GROW_BIG = 2.25;
+
+  const growPhase = () => {
+    if (world.grow <= 0) return { scale: 1, roots: 0 };
+    if (world.grow > GROW_HOLD + GROW_BLOOM) {
+      const p = (GROW_HOLD + GROW_BLOOM * 2 - world.grow) / GROW_BLOOM;
+      return { scale: 1 + (GROW_BIG - 1) * p, roots: 1 };
+    }
+    if (world.grow > GROW_BLOOM) return { scale: GROW_BIG, roots: 0 };
+    return { scale: 1 + (GROW_BIG - 1) * (world.grow / GROW_BLOOM), roots: 1 };
+  };
+
+  const ballR = () => BALL * growPhase().scale;
+
+  const stepWarp = (dt) => {
+    if (!world.warp) return false;
+    world.warp.t -= dt;
+    if (world.warp.t > 0) return true;
+    const warp = world.warp;
+    world.ball.x = warp.x;
+    world.ball.y = warp.y;
+    world.ball.vx = warp.vx;
+    world.ball.vy = warp.vy;
+    world.speed = Math.hypot(warp.vx, warp.vy);
+    world.hitLock = 0.18;
+    world.warp = null;
+    markCue("arrive");
+    return false;
   };
 
   const moveGale = (dt) => {
@@ -391,6 +553,27 @@ const TT = (() => {
     if (gale.y < pad) { gale.y = pad; gale.vy = Math.abs(gale.vy); }
     if (gale.y > LH - pad) { gale.y = LH - pad; gale.vy = -Math.abs(gale.vy); }
     if (gale.life <= 0) world.gale = null;
+  };
+
+  const stepRicochet = (dt) => {
+    const rico = world.ricochet;
+    if (!rico) return;
+    rico.wait -= dt;
+    if (rico.wait > 0) return;
+    const speed = Math.min(BASE_SPEED * 3.1, Math.max(160, world.speed) * 1.05);
+    const ang = Math.random() * Math.PI * 2;
+    world.speed = speed;
+    world.ball.vx = Math.cos(ang) * speed;
+    world.ball.vy = Math.sin(ang) * speed;
+    world.curl = null;
+    world.spin = null;
+    world.frozen = 0;
+    world.saved = null;
+    world.hitLock = 0.12;
+    rico.left -= 1;
+    markCue("rico");
+    if (rico.left <= 0) world.ricochet = null;
+    else rico.wait = 0.5;
   };
 
   const releaseSpin = () => {
@@ -444,17 +627,25 @@ const TT = (() => {
       const nearY = Math.abs(decoy.y - py) <= PAD_H / 2 + BALL;
       const movingLeft = decoy.vx < 0;
       if (nearX && nearY && ((movingLeft && player === 0) || (!movingLeft && player === 1))) {
-        decoy.vx = (player === 0 ? 1 : -1) * Math.abs(decoy.vx);
-        decoy.x = px + (player === 0 ? 1 : -1) * (PAD_W / 2 + BALL + 2);
+        world.curse[player] = 4;
+        world.decoy = null;
+        markCue("curse", player);
+        return;
       }
     });
     if (decoy.life <= 0 || decoy.x < -40 || decoy.x > LW + 40) world.decoy = null;
   };
 
   const step = (dt) => {
-    world.clock += dt;
     for (let i = 0; i < 2; i += 1) {
       if (world.weight[i] > 0) world.weight[i] = Math.max(0, world.weight[i] - dt);
+      if (world.curse[i] > 0) world.curse[i] = Math.max(0, world.curse[i] - dt);
+    }
+    if (world.burn > 0) world.burn = Math.max(0, world.burn - dt);
+    if (world.grow > 0) {
+      const before = world.grow;
+      world.grow = Math.max(0, world.grow - dt);
+      if (before > GROW_BLOOM && world.grow <= GROW_BLOOM) markCue("grow");
     }
     if (world.winner !== null) return;
     for (let i = 0; i < 2; i += 1) {
@@ -464,8 +655,9 @@ const TT = (() => {
       world.chargeAcc[i] -= 1;
       world.charge[i] = Math.min(10, world.charge[i] + 1);
       if (world.charge[i] >= 10) {
-        const kinds = ["freeze", "flame", "weight", "triple", "mimic", "gale"];
-        world.ready[i] = kinds[Math.floor(Math.random() * kinds.length)];
+        const pool = ABILITIES.filter((id) => enabled[id]);
+        if (!pool.length) continue;
+        world.ready[i] = pool[Math.floor(Math.random() * pool.length)];
         markCue("ready", i);
       }
     }
@@ -485,6 +677,9 @@ const TT = (() => {
     }
     moveGale(dt);
     stepDecoy(dt);
+    if (world.warp) {
+      if (stepWarp(dt)) return;
+    } else stepRicochet(dt);
     if (world.spin) {
       stepSpin(dt);
       return;
@@ -504,20 +699,21 @@ const TT = (() => {
       return;
     }
     if (world.hitLock > 0) world.hitLock -= dt;
+    const r = ballR();
     const travel = Math.hypot(world.ball.vx, world.ball.vy) * dt;
-    const sub = clamp(Math.ceil(travel / (BALL * 0.7)), 1, 10);
+    const sub = clamp(Math.ceil(travel / (r * 0.7)), 1, 10);
     const h = dt / sub;
     for (let s = 0; s < sub; s += 1) {
       if (world.dead) return;
       stepCurl(h);
       world.ball.x += world.ball.vx * h;
       world.ball.y += world.ball.vy * h;
-      if (world.ball.y < BALL) {
-        world.ball.y = BALL;
+      if (world.ball.y < r) {
+        world.ball.y = r;
         world.ball.vy = Math.abs(world.ball.vy);
         markCue("wall");
-      } else if (world.ball.y > LH - BALL) {
-        world.ball.y = LH - BALL;
+      } else if (world.ball.y > LH - r) {
+        world.ball.y = LH - r;
         world.ball.vy = -Math.abs(world.ball.vy);
         markCue("wall");
       }
@@ -536,17 +732,17 @@ const TT = (() => {
         const player = movingLeft ? 0 : 1;
         const px = player === 0 ? LEFT_X : RIGHT_X;
         const py = world.paddles[player];
-        const nearX = Math.abs(world.ball.x - px) <= PAD_W / 2 + BALL;
-        const nearY = Math.abs(world.ball.y - py) <= PAD_H / 2 + BALL;
+        const nearX = Math.abs(world.ball.x - px) <= PAD_W / 2 + r;
+        const nearY = Math.abs(world.ball.y - py) <= PAD_H / 2 + r;
         if (nearX && nearY && ((movingLeft && world.ball.x <= px) || (!movingLeft && world.ball.x >= px))) {
           bouncePaddle(player);
         }
       }
-      if (world.ball.x < -BALL) {
+      if (world.ball.x < -r) {
         scorePoint(1);
         return;
       }
-      if (world.ball.x > LW + BALL) {
+      if (world.ball.x > LW + r) {
         scorePoint(0);
         return;
       }
@@ -582,6 +778,18 @@ const TT = (() => {
         life: 5.5,
       };
       markCue("gale");
+    } else if (kind === "teleport") {
+      world.portal[who] = true;
+      markCue("void", who);
+    } else if (kind === "grow") {
+      world.grow = GROW_HOLD + GROW_BLOOM * 2;
+      markCue("grow");
+    } else if (kind === "curve") {
+      world.curve[who] = true;
+      markCue("curve", who);
+    } else if (kind === "ricochet") {
+      world.ricochet = { left: 4, wait: 0.5 };
+      markCue("rico");
     } else {
       world.flame[who] = true;
       markCue("flame");
@@ -603,13 +811,20 @@ const TT = (() => {
     chargeAcc: world.chargeAcc.slice(),
     ready: world.ready.slice(),
     flame: world.flame.slice(),
+    burn: world.burn,
     weight: world.weight.slice(),
+    curse: world.curse.slice(),
     triple: world.triple.slice(),
     mimic: world.mimic.slice(),
     curl: world.curl ? { ...world.curl } : null,
     decoy: world.decoy ? { ...world.decoy } : null,
     gale: world.gale ? { ...world.gale } : null,
     spin: world.spin ? { ...world.spin } : null,
+    ricochet: world.ricochet ? { left: world.ricochet.left, wait: world.ricochet.wait } : null,
+    portal: world.portal.slice(),
+    curve: world.curve.slice(),
+    grow: world.grow,
+    warp: world.warp ? { ...world.warp } : null,
     pause: world.pause,
     winner: world.winner,
     dead: world.dead,
@@ -631,13 +846,20 @@ const TT = (() => {
     world.chargeAcc = (data.chargeAcc || [0, 0]).slice();
     world.ready = data.ready.slice();
     world.flame = data.flame.slice();
+    world.burn = data.burn || 0;
     world.weight = (data.weight || [0, 0]).slice();
+    world.curse = (data.curse || [0, 0]).slice();
     world.triple = (data.triple || [0, 0]).slice();
     world.mimic = (data.mimic || [false, false]).slice();
     world.curl = data.curl || null;
     world.decoy = data.decoy || null;
     world.gale = data.gale || null;
     world.spin = data.spin || null;
+    world.ricochet = data.ricochet || null;
+    world.portal = (data.portal || [false, false]).slice();
+    world.curve = (data.curve || [false, false]).slice();
+    world.grow = data.grow || 0;
+    world.warp = data.warp || null;
     world.pause = data.pause;
     world.winner = data.winner;
     world.dead = data.dead;
@@ -812,7 +1034,7 @@ const TT = (() => {
     ctx.restore();
   };
 
-  const drawPaddle = (x, y, mine, lit, heavy, gust, spook, viewBox) => {
+  const drawPaddle = (x, y, mine, lit, heavy, gust, spook, hole, bend, cursed, viewBox) => {
     const { scale, ox, oy } = viewBox;
     const sx = ox + x * scale;
     const sy = oy + y * scale;
@@ -875,6 +1097,30 @@ const TT = (() => {
       ctx.stroke();
       ctx.restore();
     }
+    if (cursed) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.95)";
+      ctx.shadowColor = "#b91c1c";
+      ctx.shadowBlur = 16;
+      ctx.lineWidth = Math.max(2, 2.8 * scale);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rw + 8 * scale, rh + 8 * scale, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(127, 29, 29, 0.9)";
+      for (let i = 0; i < 4; i += 1) {
+        const y = -rh * 0.7 + i * rh * 0.45 + Math.sin(world.clock * 5 + i) * 4 * scale;
+        ctx.beginPath();
+        ctx.moveTo(-rw * 0.2, y);
+        ctx.quadraticCurveTo(rw * 0.15, y + 10 * scale, rw * 0.05, y + 22 * scale);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(220, 38, 38, 0.28)";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rw * 0.85, rh * 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     if (gust) {
       ctx.save();
       ctx.globalAlpha = 0.7;
@@ -905,6 +1151,56 @@ const TT = (() => {
       ctx.fill();
       ctx.restore();
     }
+    if (hole) {
+      ctx.save();
+      const core = ctx.createRadialGradient(0, 0, rw * 0.08, 0, 0, rh);
+      core.addColorStop(0, "#000000");
+      core.addColorStop(0.42, "#14051f");
+      core.addColorStop(0.7, "rgba(109, 40, 217, 0.85)");
+      core.addColorStop(1, "rgba(168, 85, 247, 0)");
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rw * 1.45, rh * 1.08, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(216, 180, 254, 0.9)";
+      ctx.lineWidth = Math.max(1.5, 2 * scale);
+      for (let i = 0; i < 3; i += 1) {
+        ctx.save();
+        ctx.rotate(world.clock * (2.2 + i * 0.7) + i);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rw * (0.85 + i * 0.38), rh * (0.28 + i * 0.16), 0, 0.2, Math.PI * 1.55);
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.fillStyle = "#020617";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rw * 0.42, rh * 0.28, world.clock * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    if (bend) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(134, 239, 172, 0.95)";
+      ctx.shadowColor = "#22c55e";
+      ctx.shadowBlur = 16;
+      ctx.lineWidth = Math.max(2, 2.6 * scale);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rw + 10 * scale, rh + 6 * scale, Math.sin(world.clock * 3) * 0.55, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      for (let i = 0; i < 3; i += 1) {
+        const shift = ((world.clock * 110 + i * 36) % (rh * 2.1)) - rh;
+        ctx.beginPath();
+        ctx.moveTo(-rw - 6 * scale, shift);
+        ctx.quadraticCurveTo(0, shift + 16 * scale, rw + 16 * scale, shift - 10 * scale);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(34, 197, 94, 0.22)";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rw * 0.9, rh * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.restore();
   };
 
@@ -922,8 +1218,11 @@ const TT = (() => {
     const heavy = preview ? [false, false] : world.weight.map((n) => n > 0);
     const gust = preview ? [false, false] : world.triple.map((n) => n > 0);
     const spook = preview ? [false, false] : world.mimic.slice();
-    drawPaddle(LEFT_X, pads[0], seat === 0, !preview && world.flame[0], heavy[0], gust[0], spook[0], viewBox);
-    drawPaddle(RIGHT_X, pads[1], seat === 1, !preview && world.flame[1], heavy[1], gust[1], spook[1], viewBox);
+    const hole = preview ? [false, false] : world.portal.slice();
+    const bend = preview ? [false, false] : world.curve.slice();
+    const cursed = preview ? [false, false] : world.curse.map((n) => n > 0);
+    drawPaddle(LEFT_X, pads[0], seat === 0, !preview && world.flame[0], heavy[0], gust[0], spook[0], hole[0], bend[0], cursed[0], viewBox);
+    drawPaddle(RIGHT_X, pads[1], seat === 1, !preview && world.flame[1], heavy[1], gust[1], spook[1], hole[1], bend[1], cursed[1], viewBox);
     if (!preview && world.gale) {
       const gale = world.gale;
       const gx = ox + gale.x * scale;
@@ -931,12 +1230,14 @@ const TT = (() => {
       ctx.save();
       ctx.translate(gx, gy);
       for (let i = 0; i < 6; i += 1) {
-        ctx.rotate(world.clock * 7 + i * 0.55);
+        ctx.save();
+        ctx.rotate(world.clock * (3.2 + i * 0.85) + i * 0.7);
         ctx.strokeStyle = `rgba(226, 232, 240, ${0.28 + i * 0.08})`;
         ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.ellipse(0, 0, (16 + i * 9) * scale, (8 + i * 5) * scale, 0, 0, Math.PI * 1.6);
         ctx.stroke();
+        ctx.restore();
       }
       ctx.restore();
     }
@@ -954,15 +1255,56 @@ const TT = (() => {
     if (!preview) {
       trail.forEach((bit, index) => {
         const t = bit.life * (index + 1) / trail.length;
-        ctx.fillStyle = world.frozen > 0 ? `rgba(125, 211, 252, ${t * 0.35})` : `rgba(255,255,255,${t * 0.28})`;
-        ctx.beginPath();
-        ctx.arc(ox + bit.x * scale, oy + bit.y * scale, BALL * scale * (0.35 + t * 0.5), 0, Math.PI * 2);
-        ctx.fill();
+        const tx = ox + bit.x * scale;
+        const ty = oy + bit.y * scale;
+        if (world.burn > 0) {
+          ctx.fillStyle = `rgba(220, 38, 38, ${t * 0.45})`;
+          ctx.beginPath();
+          ctx.arc(tx, ty, BALL * scale * (0.7 + t * 0.9), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = `rgba(251, 146, 60, ${t * 0.7})`;
+          ctx.beginPath();
+          ctx.arc(tx, ty, BALL * scale * (0.4 + t * 0.55), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = `rgba(254, 240, 138, ${t * 0.85})`;
+          ctx.beginPath();
+          ctx.arc(tx, ty, BALL * scale * (0.16 + t * 0.22), 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = world.frozen > 0 ? `rgba(125, 211, 252, ${t * 0.35})` : `rgba(255,255,255,${t * 0.28})`;
+          ctx.beginPath();
+          ctx.arc(tx, ty, BALL * scale * (0.35 + t * 0.5), 0, Math.PI * 2);
+          ctx.fill();
+        }
       });
     }
-    const bx = ox + ball.x * scale;
-    const by = oy + ball.y * scale;
-    const rad = BALL * scale * (world.frozen > 0 ? 1.15 : 1);
+    const hidden = !preview && world.warp;
+    const phase = hidden || preview ? { scale: 1, roots: 0 } : growPhase();
+    const bx = ox + (hidden ? world.warp.x : ball.x) * scale;
+    const by = oy + (hidden ? world.warp.y : ball.y) * scale;
+    const rad = BALL * phase.scale * scale * (!hidden && world.frozen > 0 ? 1.15 : 1);
+    if (hidden) {
+      const left = Math.max(0, world.warp.t);
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.strokeStyle = "rgba(216, 180, 254, 0.95)";
+      ctx.shadowColor = "#7c3aed";
+      ctx.shadowBlur = 18;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, (36 + Math.sin(world.clock * 9) * 6) * scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, 16 * scale, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - left));
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = `rgba(88, 28, 135, ${0.22 + (1 - left) * 0.4})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, 12 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    if (!hidden) {
     ctx.fillStyle = "rgba(0,0,0,0.3)";
     ctx.beginPath();
     ctx.ellipse(bx + 4 * scale, by + 8 * scale, rad * 0.95, rad * 0.42, 0, 0, Math.PI * 2);
@@ -973,6 +1315,19 @@ const TT = (() => {
       ctx.beginPath();
       ctx.arc(bx, by, rad + 8 + Math.sin(world.clock * 6) * 2, 0, Math.PI * 2);
       ctx.stroke();
+    }
+    if (!preview && world.ricochet) {
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(world.clock * 9);
+      ctx.strokeStyle = "rgba(250, 204, 21, 0.95)";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < world.ricochet.left; i += 1) {
+        ctx.beginPath();
+        ctx.arc(0, 0, rad + 10 + i * 5, i * 0.4, i * 0.4 + 1.1);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
     if (world.spin) {
       ctx.save();
@@ -996,12 +1351,47 @@ const TT = (() => {
       ctx.fill();
     }
     const g = ctx.createRadialGradient(bx - rad * 0.35, by - rad * 0.4, 1, bx, by, rad);
-    g.addColorStop(0, "#ffffff");
-    g.addColorStop(1, world.frozen > 0 ? "#7dd3fc" : "#d1d5db");
+    g.addColorStop(0, world.burn > 0 ? "#fff7ed" : "#ffffff");
+    g.addColorStop(1, world.frozen > 0 ? "#7dd3fc" : world.burn > 0 ? "#ea580c" : "#d1d5db");
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(bx, by, rad, 0, Math.PI * 2);
     ctx.fill();
+    if (!hidden && world.burn > 0) {
+      ctx.save();
+      ctx.translate(bx, by);
+      const back = Math.atan2(-ball.vy, -ball.vx);
+      for (let i = 0; i < 5; i += 1) {
+        const flick = Math.sin(world.clock * 18 + i * 1.7);
+        const a = back + (i - 2) * 0.28 + flick * 0.08;
+        const h = rad * (1.5 + flick * 0.35 + i * 0.05);
+        ctx.fillStyle = i % 2 === 0 ? "rgba(249, 115, 22, 0.9)" : "rgba(250, 204, 21, 0.92)";
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a - 0.45) * rad * 0.55, Math.sin(a - 0.45) * rad * 0.55);
+        ctx.quadraticCurveTo(Math.cos(a) * h * 0.7, Math.sin(a) * h * 0.7, Math.cos(a) * h, Math.sin(a) * h);
+        ctx.quadraticCurveTo(Math.cos(a) * h * 0.55, Math.sin(a) * h * 0.55, Math.cos(a + 0.45) * rad * 0.55, Math.sin(a + 0.45) * rad * 0.55);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    if (phase.roots > 0) {
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.globalAlpha = phase.roots;
+      ctx.lineCap = "round";
+      for (let i = 0; i < 8; i += 1) {
+        const a = world.clock * 6 + i * ((Math.PI * 2) / 8);
+        const len = rad * 1.7;
+        ctx.strokeStyle = i % 2 === 0 ? "rgba(101, 67, 33, 0.95)" : "rgba(190, 242, 100, 0.95)";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * rad * 0.7, Math.sin(a) * rad * 0.7);
+        ctx.quadraticCurveTo(Math.cos(a + 0.6) * len * 0.75, Math.sin(a + 0.25) * len * 0.75, Math.cos(a) * len, Math.sin(a) * len);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    }
     motes.forEach((bit) => {
       ctx.globalAlpha = Math.max(0, bit.life / bit.max);
       ctx.fillStyle = bit.color;
@@ -1022,12 +1412,22 @@ const TT = (() => {
     if (world.winner !== null) return world.winner === seat ? "You take the table." : "The other racket takes it.";
     if (!world.live && world.countdown > 0) return "Get ready.";
     if (world.frozen > 0) return "The ball is frozen.";
+    if (world.curse[seat] > 0) return "Your racket is cursed.";
+    if (world.curse[1 - seat] > 0) return "Their racket is cursed.";
     if (world.weight[seat] > 0) return "Your racket is weighted.";
     if (world.weight[1 - seat] > 0) return "Their racket is weighted.";
     if (world.triple[seat] > 0) return "Wind on your racket. Hit three times.";
     if (world.mimic[seat]) return "Your racket is haunted.";
+    if (world.portal[seat]) return "Your racket is a black hole.";
+    if (world.curve[seat]) return "Your racket is curved.";
+    if (world.curl && world.curl.bend) return "The ball is bending.";
+    if (world.warp) return "Purple mark. The ball arrives in one second.";
+    if (world.grow > GROW_BLOOM && world.grow <= GROW_HOLD + GROW_BLOOM) return "The ball is huge.";
+    if (world.grow > 0) return "The ball pops.";
     if (world.spin) return "The ball is spinning in the gale.";
+    if (world.ricochet) return "Ricochet. The ball is about to kick.";
     if (world.flame[seat]) return "Your racket is lit. The next hit burns.";
+    if (world.burn > 0) return "The ball is on fire.";
     if (world.msg) return world.msg;
     return "Rally.";
   };
@@ -1055,6 +1455,10 @@ const TT = (() => {
     hex.classList.toggle("is-triple", ready === "triple");
     hex.classList.toggle("is-mimic", ready === "mimic");
     hex.classList.toggle("is-gale", ready === "gale");
+    hex.classList.toggle("is-ricochet", ready === "ricochet");
+    hex.classList.toggle("is-teleport", ready === "teleport");
+    hex.classList.toggle("is-grow", ready === "grow");
+    hex.classList.toggle("is-curve", ready === "curve");
     label.textContent = ready || "";
     hex.setAttribute("aria-label", ready ? `Use ${ready}` : "Ability charging");
     let stamps = stage.querySelector(".stamp-layer");
@@ -1146,6 +1550,37 @@ const TT = (() => {
     if (notice) setNote(notice);
   };
 
+  const showPowers = () => {
+    view = "powers";
+    const cards = ABILITIES.map((id) => `
+      <button class="tt-hex power-hex is-${id}${enabled[id] ? " is-on" : ""}" type="button" data-action="power" data-kind="${id}" aria-pressed="${enabled[id] ? "true" : "false"}">
+        <span class="tt-hex-well" aria-hidden="true"><i></i></span>
+        <svg viewBox="0 0 100 114" aria-hidden="true">
+          <polygon points="50,4 96,30 96,84 50,110 4,84 4,30" class="tt-hex-shell"></polygon>
+        </svg>
+        <strong>${id}</strong>
+      </button>
+    `).join("");
+    stage.innerHTML = `
+      <section class="ttt-panel">
+        <button class="ttt-back" type="button" data-action="menu">Back</button>
+        <p class="ttt-kicker">Abilities</p>
+        <h2>What can appear</h2>
+        <p class="ttt-copy">Press an ability to turn it off for this game. Off abilities cannot be rolled.</p>
+        <div class="power-grid">${cards}</div>
+        <div class="mode-list power-actions">
+          <button class="mode-btn" type="button" data-action="powers-all">Select all</button>
+          <button class="mode-btn alt" type="button" data-action="powers-none">Deselect all</button>
+          <button class="mode-btn" type="button" data-action="powers-start">Start</button>
+        </div>
+      </section>`;
+  };
+
+  const beginChosen = () => {
+    startMatch(true);
+    if (net.role === "host") sendState();
+  };
+
   const startMatch = (reset) => {
     view = "play";
     if (reset) {
@@ -1205,8 +1640,8 @@ const TT = (() => {
       }
       net.conn = conn;
       conn.on("open", () => {
-        startMatch(true);
-        sendState();
+        ABILITIES.forEach((id) => { enabled[id] = true; });
+        showPowers();
       });
       conn.on("data", onHostData);
       conn.on("close", () => {
@@ -1251,7 +1686,7 @@ const TT = (() => {
       if (net.peer !== peer) return;
       const conn = peer.connect(`unfairgames-tt-${code}`, { reliable: true });
       net.conn = conn;
-      conn.on("open", () => setNote("Waiting for the host to start."));
+      conn.on("open", () => setNote("Waiting for the host to choose abilities."));
       conn.on("data", onGuestData);
       conn.on("close", () => {
         if (conn.__ugSilent) return;
@@ -1278,7 +1713,7 @@ const TT = (() => {
     }
     aim = clamp(aim, PAD_H / 2, LH - PAD_H / 2);
     const cur = world.paddles[1];
-    const pace = 430 * (world.weight[1] > 0 ? 0.4 : 1);
+    const pace = 430 * (world.weight[1] > 0 ? 0.6 : 1) * (world.curse[1] > 0 ? 0.75 : 1);
     const stepY = clamp(aim - cur, -pace * dt, pace * dt);
     world.paddles[1] = clamp(cur + stepY, PAD_H / 2, LH - PAD_H / 2);
     const incoming = world.live && world.ball.vx > 280 && world.ball.x > LW * 0.55 && world.frozen <= 0;
@@ -1288,19 +1723,25 @@ const TT = (() => {
     if (world.ready[1] === "triple" && incoming && world.triple[1] <= 0) useAbility(1);
     if (world.ready[1] === "mimic" && incoming && !world.mimic[1]) useAbility(1);
     if (world.ready[1] === "gale" && world.live && !world.gale && world.ball.x > LW * 0.35) useAbility(1);
+    if (world.ready[1] === "ricochet" && world.live && !world.ricochet && world.frozen <= 0) useAbility(1);
+    if (world.ready[1] === "teleport" && incoming && !world.portal[1]) useAbility(1);
+    if (world.ready[1] === "grow" && world.live && world.grow <= 0 && !world.warp) useAbility(1);
+    if (world.ready[1] === "curve" && incoming && !world.curve[1]) useAbility(1);
   };
 
   const startLocal = () => {
     dropNet();
     net.role = "local";
     seat = 0;
-    startMatch(true);
+    ABILITIES.forEach((id) => { enabled[id] = true; });
+    showPowers();
   };
 
   const placePaddle = (index, target, dt) => {
     const y = clamp(target, PAD_H / 2, LH - PAD_H / 2);
-    if (world.weight[index] > 0) {
-      const blend = 1 - Math.exp(-0.72 * dt);
+    const drag = (world.weight[index] > 0 ? 0.6 : 1) * (world.curse[index] > 0 ? 0.75 : 1);
+    if (drag < 1) {
+      const blend = 1 - Math.exp(-1.15 * (drag / 0.6) * dt);
       world.paddles[index] = clamp(world.paddles[index] + (y - world.paddles[index]) * blend, PAD_H / 2, LH - PAD_H / 2);
     } else world.paddles[index] = y;
     return y;
@@ -1318,6 +1759,7 @@ const TT = (() => {
     raf = window.requestAnimationFrame(frame);
     const dt = Math.min(0.033, lastFrame ? (now - lastFrame) / 1000 : 0.016);
     lastFrame = now;
+    world.clock += dt;
     flash = Math.max(0, flash - dt * 1.7);
     for (let i = motes.length - 1; i >= 0; i -= 1) {
       const bit = motes[i];
@@ -1327,9 +1769,10 @@ const TT = (() => {
       bit.vy += 30 * dt;
       if (bit.life <= 0) motes.splice(i, 1);
     }
-    if (view === "play" && world.live && world.frozen <= 0) {
+    if (view === "play" && world.live && world.frozen <= 0 && !world.warp) {
       trail.push({ x: world.ball.x, y: world.ball.y, life: 1 });
-      if (trail.length > 16) trail.shift();
+      const trailCap = world.burn > 0 ? 28 : 16;
+      if (trail.length > trailCap) trail.shift();
     } else if (trail.length) trail.length = 0;
     trail.forEach((bit) => { bit.life = Math.max(0, bit.life - dt * 2.4); });
     if (view === "play" && world.frozen > 0 && Math.random() < 0.55) burst(world.ball.x, world.ball.y, "#bae6fd", 1, 36, 0.45);
@@ -1338,9 +1781,21 @@ const TT = (() => {
         if (world.flame[i] && Math.random() < 0.65) burst(i === 0 ? LEFT_X : RIGHT_X, world.paddles[i] + (Math.random() - 0.5) * PAD_H, "#fb923c", 1, 40, 0.32);
         if (world.triple[i] > 0 && Math.random() < 0.8) burst(i === 0 ? LEFT_X : RIGHT_X, world.paddles[i] + (Math.random() - 0.5) * PAD_H, "#e0f2fe", 1, 70, 0.28);
         if (world.mimic[i] && Math.random() < 0.55) burst(i === 0 ? LEFT_X : RIGHT_X, world.paddles[i], "#c084fc", 1, 30, 0.4);
+        if (world.curse[i] > 0 && Math.random() < 0.7) burst(i === 0 ? LEFT_X : RIGHT_X, world.paddles[i] + (Math.random() - 0.5) * PAD_H, "#ef4444", 1, 28, 0.4);
       }
       if (world.gale && Math.random() < 0.85) burst(world.gale.x, world.gale.y, "#f8fafc", 2, 50, 0.3);
-      if (world.curl && Math.random() < 0.7) burst(world.ball.x, world.ball.y, "#bae6fd", 2, 90, 0.25);
+      if (world.ricochet && Math.random() < 0.75) burst(world.ball.x, world.ball.y, "#facc15", 1, 70, 0.22);
+      if (world.burn > 0 && !world.warp) {
+        burst(world.ball.x, world.ball.y, "#fb923c", 2, 90, 0.28);
+        burst(world.ball.x, world.ball.y, "#fde68a", 1, 50, 0.2);
+      }
+      if (world.warp && Math.random() < 0.85) burst(world.warp.x, world.warp.y, "#c084fc", 2, 50, 0.28);
+      for (let i = 0; i < 2; i += 1) {
+        if (world.portal[i] && Math.random() < 0.8) burst(i === 0 ? LEFT_X : RIGHT_X, world.paddles[i], "#6d28d9", 1, 36, 0.4);
+        if (world.curve[i] && Math.random() < 0.7) burst(i === 0 ? LEFT_X : RIGHT_X, world.paddles[i] + (Math.random() - 0.5) * PAD_H, "#86efac", 1, 50, 0.3);
+      }
+      if (world.curl && world.curl.bend && Math.random() < 0.8) burst(world.ball.x, world.ball.y, "#86efac", 2, 80, 0.28);
+      else if (world.curl && Math.random() < 0.7) burst(world.ball.x, world.ball.y, "#bae6fd", 2, 90, 0.25);
     }
     let sentY = null;
     if (view === "play" && pointerY != null) sentY = setLocalPaddle(pointerY, dt);
@@ -1430,6 +1885,20 @@ const TT = (() => {
       showMenu();
     }
     if (name === "local") startLocal();
+    if (name === "power") {
+      const kind = action.dataset.kind;
+      if (enabled[kind] != null) enabled[kind] = !enabled[kind];
+      showPowers();
+    }
+    if (name === "powers-all") {
+      ABILITIES.forEach((id) => { enabled[id] = true; });
+      showPowers();
+    }
+    if (name === "powers-none") {
+      ABILITIES.forEach((id) => { enabled[id] = false; });
+      showPowers();
+    }
+    if (name === "powers-start") beginChosen();
     if (name === "host") hostRoom();
     if (name === "join-mode") showJoin();
     if (name === "rematch") {
