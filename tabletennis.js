@@ -15,7 +15,7 @@ const TT = (() => {
   const rootEl = document.querySelector("#tt");
   const stage = document.querySelector("#tt-root");
   const canvas = document.querySelector("#tt-canvas");
-  const ctx = canvas.getContext("2d");
+  let ctx = canvas.getContext("2d");
   const openButton = document.querySelector("#open-tt");
 
   const peerOptions = { host: "0.peerjs.com", port: 443, path: "/", secure: true };
@@ -27,6 +27,8 @@ const TT = (() => {
   let raf = 0;
   let lastFrame = 0;
   let sendAt = 0;
+  let abilityLeft = 0;
+  let abilityAt = 0;
   let notice = "";
   let pointerY = null;
   let cue = null;
@@ -35,6 +37,10 @@ const TT = (() => {
   let countShown = 0;
   let guestAim = LH / 2;
   let guestSeen = false;
+  let remote = null;
+  let viewW = 0;
+  let viewH = 0;
+  let viewDpr = 0;
   let flash = 0;
   const motes = [];
   const trail = [];
@@ -247,22 +253,23 @@ const TT = (() => {
     },
   };
 
+  const spareMotes = [];
   const burst = (x, y, color, count, speed, life) => {
     for (let i = 0; i < count; i += 1) {
       const a = Math.random() * Math.PI * 2;
       const s = speed * (0.35 + Math.random() * 0.7);
-      motes.push({
-        x,
-        y,
-        vx: Math.cos(a) * s,
-        vy: Math.sin(a) * s,
-        life: life * (0.65 + Math.random() * 0.5),
-        max: life,
-        color,
-        r: 1.6 + Math.random() * 3.4,
-      });
+      const bit = spareMotes.pop() || {};
+      bit.x = x;
+      bit.y = y;
+      bit.vx = Math.cos(a) * s;
+      bit.vy = Math.sin(a) * s;
+      bit.life = life * (0.65 + Math.random() * 0.5);
+      bit.max = life;
+      bit.color = color;
+      bit.r = 1.6 + Math.random() * 3.4;
+      motes.push(bit);
     }
-    if (motes.length > 140) motes.splice(0, motes.length - 140);
+    while (motes.length > 140) spareMotes.push(motes.shift());
   };
 
   const playCue = (name, who) => {
@@ -837,7 +844,6 @@ const TT = (() => {
   const applyPacket = (data) => {
     if (data.cue) playCue(data.cue, data.cueWho);
     world.ball = data.ball;
-    world.paddles[1 - seat] = data.paddles[1 - seat];
     world.scores = data.scores.slice();
     world.countdown = data.countdown ?? 0;
     world.live = data.live;
@@ -866,6 +872,83 @@ const TT = (() => {
     world.msg = data.msg;
     world.speed = data.speed;
     if (view !== "play") startMatch(false);
+    noteRemote(data);
+  };
+
+  const noteRemote = (data) => {
+    const now = performance.now();
+    const ball = data.ball || { x: LW / 2, y: LH / 2, vx: 0, vy: 0 };
+    const foe = data.paddles ? data.paddles[1 - seat] : LH / 2;
+    if (!remote) {
+      remote = {
+        ball: { ...ball },
+        at: now,
+        foe,
+        foeShown: foe,
+        gale: data.gale ? { ...data.gale } : null,
+        decoy: data.decoy ? { ...data.decoy } : null,
+      };
+      return;
+    }
+    const age = Math.min(0.06, Math.max(0, (now - remote.at) / 1000));
+    const predX = remote.ball.x + remote.ball.vx * age;
+    const predY = remote.ball.y + remote.ball.vy * age;
+    const err = Math.hypot(predX - ball.x, predY - ball.y);
+    const hard = !data.live || data.warp || data.frozen > 0 || err > 150;
+    if (hard) remote.ball = { ...ball };
+    else {
+      const pull = err > 48 ? 0.35 : 0;
+      remote.ball = {
+        x: predX + (ball.x - predX) * pull,
+        y: predY + (ball.y - predY) * pull,
+        vx: ball.vx,
+        vy: ball.vy,
+      };
+    }
+    remote.at = now;
+    remote.foe = foe;
+    remote.gale = data.gale ? { ...data.gale } : null;
+    remote.decoy = data.decoy ? { ...data.decoy } : null;
+  };
+
+  const presentGuest = (dt, now) => {
+    if (net.role !== "guest" || view !== "play" || !remote) return;
+    const age = Math.min(0.05, Math.max(0, (now - remote.at) / 1000));
+    const blend = 1 - Math.exp(-24 * dt);
+    remote.foeShown += (remote.foe - remote.foeShown) * blend;
+    world.paddles[1 - seat] = remote.foeShown;
+    if (world.warp || !world.live || world.frozen > 0) return;
+    if (world.spin && remote.gale) {
+      const gx = remote.gale.x + remote.gale.vx * age;
+      const gy = remote.gale.y + remote.gale.vy * age;
+      const ang = world.spin.ang + age * 10;
+      if (world.gale) {
+        world.gale.x = gx;
+        world.gale.y = gy;
+      }
+      world.ball.x = gx + Math.cos(ang) * 24;
+      world.ball.y = gy + Math.sin(ang) * 24;
+      return;
+    }
+    let y = remote.ball.y + remote.ball.vy * age;
+    const r = ballR();
+    if (y < r) y = r + (r - y);
+    else if (y > LH - r) y = (LH - r) - (y - (LH - r));
+    world.ball.x = remote.ball.x + remote.ball.vx * age;
+    world.ball.y = y;
+    world.ball.vx = remote.ball.vx;
+    world.ball.vy = remote.ball.vy;
+    if (world.gale && remote.gale) {
+      world.gale.x = remote.gale.x + remote.gale.vx * age;
+      world.gale.y = remote.gale.y + remote.gale.vy * age;
+    }
+    if (world.decoy && remote.decoy) {
+      let dy = remote.decoy.y + remote.decoy.vy * age;
+      if (dy < BALL) dy = BALL + (BALL - dy);
+      else if (dy > LH - BALL) dy = (LH - BALL) - (dy - (LH - BALL));
+      world.decoy.x = remote.decoy.x + remote.decoy.vx * age;
+      world.decoy.y = dy;
+    }
   };
 
   const sendState = () => {
@@ -910,6 +993,10 @@ const TT = (() => {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = rootEl.clientWidth || window.innerWidth;
     const h = rootEl.clientHeight || window.innerHeight;
+    if (w === viewW && h === viewH && dpr === viewDpr) return;
+    viewW = w;
+    viewH = h;
+    viewDpr = dpr;
     canvas.width = Math.max(1, Math.floor(w * dpr));
     canvas.height = Math.max(1, Math.floor(h * dpr));
     canvas.style.width = `${w}px`;
@@ -1032,6 +1119,25 @@ const TT = (() => {
     ctx.fillRect(netX - 8, 14, 16, 8);
     ctx.fillRect(netX - 8, LH - 22, 16, 8);
     ctx.restore();
+  };
+
+  let tableCache = null;
+  let tableKey = "";
+  const paintTable = (viewBox) => {
+    const key = `${viewW}x${viewH}@${viewDpr}`;
+    if (!tableCache || tableKey !== key) {
+      tableKey = key;
+      if (!tableCache) tableCache = document.createElement("canvas");
+      tableCache.width = Math.max(1, canvas.width);
+      tableCache.height = Math.max(1, canvas.height);
+      const off = tableCache.getContext("2d", { alpha: false });
+      off.setTransform(viewDpr || 1, 0, 0, viewDpr || 1, 0, 0);
+      const live = ctx;
+      ctx = off;
+      drawTable(viewBox);
+      ctx = live;
+    }
+    ctx.drawImage(tableCache, 0, 0, viewBox.vw, viewBox.vh);
   };
 
   const drawPaddle = (x, y, mine, lit, heavy, gust, spook, hole, bend, cursed, viewBox) => {
@@ -1209,7 +1315,7 @@ const TT = (() => {
     const { scale, ox, oy, vw, vh } = viewBox;
     ctx.save();
     if (flash > 0) ctx.translate((Math.random() - 0.5) * 10 * flash, (Math.random() - 0.5) * 6 * flash);
-    drawTable(viewBox);
+    paintTable(viewBox);
     const preview = view !== "play";
     const pads = preview ? [LH * 0.42, LH * 0.58] : world.paddles;
     const ball = preview
@@ -1493,6 +1599,8 @@ const TT = (() => {
 
   const showMenu = () => {
     view = "menu";
+    remote = null;
+    abilityLeft = 0;
     notice = "";
     document.body.classList.remove("is-stamped");
     stage.innerHTML = `
@@ -1583,6 +1691,7 @@ const TT = (() => {
 
   const startMatch = (reset) => {
     view = "play";
+    remote = null;
     if (reset) {
       world = fresh();
       beginPoint();
@@ -1684,7 +1793,7 @@ const TT = (() => {
     setNote("Connecting...");
     peer.on("open", () => {
       if (net.peer !== peer) return;
-      const conn = peer.connect(`unfairgames-tt-${code}`, { reliable: true });
+      const conn = peer.connect(`unfairgames-tt-${code}`, { reliable: false });
       net.conn = conn;
       conn.on("open", () => setNote("Waiting for the host to choose abilities."));
       conn.on("data", onGuestData);
@@ -1760,6 +1869,7 @@ const TT = (() => {
     const dt = Math.min(0.033, lastFrame ? (now - lastFrame) / 1000 : 0.016);
     lastFrame = now;
     world.clock += dt;
+    presentGuest(dt, now);
     flash = Math.max(0, flash - dt * 1.7);
     for (let i = motes.length - 1; i >= 0; i -= 1) {
       const bit = motes[i];
@@ -1767,7 +1877,7 @@ const TT = (() => {
       bit.x += bit.vx * dt;
       bit.y += bit.vy * dt;
       bit.vy += 30 * dt;
-      if (bit.life <= 0) motes.splice(i, 1);
+      if (bit.life <= 0) spareMotes.push(motes.splice(i, 1)[0]);
     }
     if (view === "play" && world.live && world.frozen <= 0 && !world.warp) {
       trail.push({ x: world.ball.x, y: world.ball.y, life: 1 });
@@ -1808,11 +1918,13 @@ const TT = (() => {
         console.error(error);
       }
     }
-    if (view === "play" && net.role === "guest" && sentY != null && now - sendAt > 32) {
-      emit({ t: "pad", y: sentY });
-      sendAt = now;
+    if (view === "play" && net.role === "guest" && abilityLeft > 0 && now - abilityAt > 70) {
+      abilityLeft -= 1;
+      abilityAt = now;
+      emit({ t: "ability" });
     }
-    if (view === "play" && net.role === "host" && now - sendAt > 32) {
+    if (view === "play" && net.role === "guest" && sentY != null) emit({ t: "pad", y: sentY });
+    if (view === "play" && net.role === "host" && now - sendAt > 16) {
       sendState();
       sendAt = now;
     }
@@ -1836,6 +1948,7 @@ const TT = (() => {
 
   const close = () => {
     dropNet();
+    remote = null;
     view = "closed";
     rootEl.hidden = true;
     document.body.style.overflow = "";
@@ -1849,7 +1962,11 @@ const TT = (() => {
   const castAbility = () => {
     if (view !== "play" || rootEl.hidden) return;
     if (net.role === "host" || net.role === "local") useAbility(0);
-    else emit({ t: "ability" });
+    else {
+      abilityLeft = 3;
+      abilityAt = performance.now();
+      emit({ t: "ability" });
+    }
   };
 
   const trackMouse = (event) => {
