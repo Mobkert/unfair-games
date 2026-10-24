@@ -671,6 +671,10 @@ button.card:hover {
   position: relative;
   width: min(100%, 520px);
   overflow: visible;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .cell {
@@ -1857,7 +1861,8 @@ body.is-stamped {
 }
 
 .tt-hud .ttt-back,
-.tt-hud .mode-btn {
+.tt-hud .mode-btn,
+.tt-hud .tt-hex {
   pointer-events: auto;
 }
 
@@ -1919,10 +1924,23 @@ body.is-stamped {
   top: 1.4vh;
   width: 86px;
   height: 98px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
   transform: translateX(-50%);
   display: grid;
   place-items: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   filter: drop-shadow(0 0 18px rgba(80, 255, 150, 0.28));
+}
+
+.tt-hex.is-ready:active {
+  transform: translateX(-50%) scale(0.94);
 }
 
 .tt-hex svg {
@@ -2023,6 +2041,31 @@ body.is-stamped {
 
 @keyframes tt-hex-pulse {
   50% { filter: drop-shadow(0 0 22px rgba(180, 255, 120, 0.85)); }
+}
+
+.hold-ring {
+  position: fixed;
+  z-index: 40;
+  width: 112px;
+  height: 112px;
+  margin: -56px 0 0 -56px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.hold-ring circle {
+  fill: none;
+  stroke: #2ee7ff;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-dasharray: 263.9;
+  stroke-dashoffset: 263.9;
+  animation: hold-draw 0.75s linear forwards;
+  filter: drop-shadow(0 0 8px rgba(46, 231, 255, 0.85));
+}
+
+@keyframes hold-draw {
+  to { stroke-dashoffset: 0; }
 }
 
 .tt-count[hidden] {

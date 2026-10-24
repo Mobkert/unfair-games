@@ -8,31 +8,31 @@ const Ttt = (() => {
   const SHAPES = {
     x: {
       name: "X",
-      text: "Press E, then click a square. It falls off for 3 of your turns. A shape on it falls too.",
+      text: "Press E or hold the board, then click a square. It falls off for 3 of your turns. A shape on it falls too.",
     },
     o: {
       name: "O",
-      text: "Press E, click any shape, then click an empty square. It slides there.",
+      text: "Press E or hold the board, click any shape, then click an empty square. It slides there.",
     },
     square: {
       name: "Square",
-      text: "Press E. A random 2×2 burns every shape inside it, including yours.",
+      text: "Press E or hold the board. A random 2×2 burns every shape inside it, including yours.",
     },
     line: {
       name: "Line",
-      text: "Press E. Two squares in that row light up. Click to drop a line in each. Horizontal only.",
+      text: "Press E or hold the board. Two squares in that row light up. Click to drop a line in each. Horizontal only.",
     },
     star: {
       name: "Star",
-      text: "Press E, then click one enemy shape. It sparkles, then vanishes on the next turn.",
+      text: "Press E or hold the board, then click one enemy shape. It sparkles, then vanishes on the next turn.",
     },
     hex: {
       name: "Hexagon",
-      text: "Press E. A hex slowly locks into the center slot, then two of your shapes drop at random.",
+      text: "Press E or hold the board. A hex slowly locks into the center slot, then two of your shapes drop at random.",
     },
     heart: {
       name: "Heart",
-      text: "Press E. A random enemy shape turns into yours. Cooldown is 4 turns.",
+      text: "Press E or hold the board. A random enemy shape turns into yours. Cooldown is 4 turns.",
     },
   };
 
@@ -445,7 +445,7 @@ const Ttt = (() => {
         <button class="ttt-back" type="button" data-action="pick-back">Back</button>
         <p class="ttt-kicker">Local play</p>
         <h2>Player ${picking + 1}</h2>
-        <p class="ttt-copy">Choose a shape. A turn is a placement, or E for the ability.</p>
+        <p class="ttt-copy">Choose a shape. Place it, or press E. Hold the board for 0.75 seconds to use the ability.</p>
         <div class="shape-row">${cards}</div>
         <div class="preview-wrap">
           <p class="preview-label">4 across. 4 to win.</p>
@@ -485,7 +485,7 @@ const Ttt = (() => {
     if (state.players[state.turn].cooldown > 0) {
       return `Player ${state.turn + 1} · ${name}. Place a shape. Ability in ${state.players[state.turn].cooldown} turn${state.players[state.turn].cooldown === 1 ? "" : "s"}.`;
     }
-    return `Player ${state.turn + 1} · ${name}. Place a shape, or press E.`;
+    return `Player ${state.turn + 1} · ${name}. Place a shape, or press E. Hold the board for 0.75 seconds.`;
   };
 
   const renderPlay = () => {
@@ -945,6 +945,7 @@ const Ttt = (() => {
   const beginAbility = () => {
     if (!state || state.view !== "play" || state.busy || state.winner !== null || state.draw || !myTurn()) return;
     if (state.mode !== "idle") {
+      tone(320, 0.12, "sine", 0.05, 0, 140);
       state.mode = "idle";
       state.selected = null;
       state.chosen = [];
@@ -1397,7 +1398,110 @@ const Ttt = (() => {
     joinRoom(form.querySelector("input")?.value || "");
   });
 
+  const HOLD_DELAY = 450;
+  const HOLD_MS = 750;
+  let hold = null;
+  let armedPointer = null;
+  let suppressClick = false;
+
+  const clearHold = () => {
+    if (!hold) return;
+    window.clearTimeout(hold.armTimer);
+    window.clearTimeout(hold.timer);
+    if (hold.ring) hold.ring.remove();
+    hold = null;
+  };
+
+  const finishHold = () => {
+    if (!hold || hold.done || !hold.ring) return;
+    const pointerId = hold.id;
+    hold.done = true;
+    window.clearTimeout(hold.timer);
+    hold.ring.remove();
+    hold = null;
+    armedPointer = pointerId;
+    beginAbility();
+  };
+
+  const showRing = () => {
+    if (!hold || hold.ring || hold.done) return;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "hold-ring");
+    svg.setAttribute("viewBox", "0 0 100 100");
+    svg.style.left = `${hold.x}px`;
+    svg.style.top = `${hold.y}px`;
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", "50");
+    circle.setAttribute("cy", "50");
+    circle.setAttribute("r", "42");
+    circle.setAttribute("transform", "rotate(-90 50 50)");
+    svg.appendChild(circle);
+    document.body.appendChild(svg);
+    hold.ring = svg;
+    hold.start = performance.now();
+    hold.timer = window.setTimeout(finishHold, HOLD_MS);
+    try { stage.setPointerCapture(hold.id); } catch (error) { /* the ring still tracks the pointer */ }
+  };
+
+  const startHold = (event) => {
+    if (!state || state.view !== "play" || state.busy || state.winner !== null || state.draw || !myTurn()) return;
+    if (event.button != null && event.button !== 0) return;
+    if (!event.target.closest(".board")) return;
+    if (state.mode !== "idle") return;
+    const player = state.players[state.turn];
+    if (player.cooldown > 0 || !abilityPossible(state.turn)) return;
+    clearHold();
+    const pointerId = event.pointerId;
+    hold = {
+      id: pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      ring: null,
+      done: false,
+      start: 0,
+      timer: 0,
+      armTimer: window.setTimeout(showRing, HOLD_DELAY),
+    };
+  };
+
+  stage.addEventListener("pointerdown", (event) => {
+    if (armedPointer != null && event.pointerId !== armedPointer) {
+      armedPointer = null;
+      suppressClick = false;
+    }
+    startHold(event);
+  });
+  stage.addEventListener("pointermove", (event) => {
+    if (!hold || event.pointerId !== hold.id || hold.done) return;
+    const dx = event.clientX - hold.x;
+    const dy = event.clientY - hold.y;
+    if (dx * dx + dy * dy > 36 * 36) clearHold();
+  });
+  stage.addEventListener("pointerup", (event) => {
+    if (hold && event.pointerId === hold.id && !hold.done) {
+      if (hold.ring && performance.now() - hold.start >= HOLD_MS - 40) finishHold();
+      else clearHold();
+    }
+    if (armedPointer === event.pointerId) {
+      suppressClick = true;
+      armedPointer = null;
+    }
+  });
+  stage.addEventListener("pointercancel", (event) => {
+    if (!hold || event.pointerId !== hold.id || hold.done) return;
+    if (!hold.ring || performance.now() - hold.start < 200) clearHold();
+  });
+  stage.addEventListener("contextmenu", (event) => {
+    if (event.target.closest(".board")) event.preventDefault();
+  });
+
   stage.addEventListener("click", (event) => {
+    if (suppressClick) {
+      suppressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const action = event.target.closest("[data-action]");
     if (action) {
       const name = action.dataset.action;

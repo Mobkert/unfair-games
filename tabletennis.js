@@ -1056,6 +1056,7 @@ const TT = (() => {
     hex.classList.toggle("is-mimic", ready === "mimic");
     hex.classList.toggle("is-gale", ready === "gale");
     label.textContent = ready || "";
+    hex.setAttribute("aria-label", ready ? `Use ${ready}` : "Ability charging");
     let stamps = stage.querySelector(".stamp-layer");
     if (world.winner !== null) {
       if (!stamps) {
@@ -1095,7 +1096,7 @@ const TT = (() => {
         <button class="ttt-back" type="button" data-action="close">Back</button>
         <p class="ttt-kicker">U.G. / table</p>
         <h2>Table tennis</h2>
-        <p class="ttt-copy">Move your racket with the mouse. Local plays the table. Host a side and share the code to play together.</p>
+        <p class="ttt-copy">Move your racket with the mouse or finger. Tap the hexagon, or press E, when it is ready. Local plays the table. Host a side and share the code to play together.</p>
         <div class="mode-list">
           <button class="mode-btn" type="button" data-action="local">Local</button>
           <button class="mode-btn alt" type="button" data-action="host">Host</button>
@@ -1155,13 +1156,13 @@ const TT = (() => {
       <div class="tt-hud">
         <button class="ttt-back" type="button" data-action="menu">Back</button>
         <p class="tt-score"><b data-you>0</b><b data-them>0</b></p>
-        <div class="tt-hex" data-hex style="--p:0">
+        <button class="tt-hex" type="button" data-hex style="--p:0" aria-label="Use ability">
           <span class="tt-hex-well" aria-hidden="true"><i></i></span>
           <svg viewBox="0 0 100 114" aria-hidden="true">
             <polygon points="50,4 96,30 96,84 50,110 4,84 4,30" class="tt-hex-shell"></polygon>
           </svg>
           <strong data-hex-label></strong>
-        </div>
+        </button>
         <p class="tt-status" data-status></p>
         <p class="tt-count" data-count hidden>3</p>
         <div class="tt-bar" data-bar hidden>
@@ -1390,7 +1391,15 @@ const TT = (() => {
     lastFrame = 0;
   };
 
+  const castAbility = () => {
+    if (view !== "play" || rootEl.hidden) return;
+    if (net.role === "host" || net.role === "local") useAbility(0);
+    else emit({ t: "ability" });
+  };
+
   const trackMouse = (event) => {
+    const target = event.target;
+    if (target && target.closest && target.closest("[data-hex], .ttt-back, .tt-bar, .ttt-panel, .code-input")) return;
     const rect = rootEl.getBoundingClientRect();
     const y = event.clientY - rect.top;
     if (!Number.isFinite(y)) return;
@@ -1403,11 +1412,15 @@ const TT = (() => {
     if (view !== "play" || rootEl.hidden) return;
     if (event.key !== "e" && event.key !== "E") return;
     event.preventDefault();
-    if (net.role === "host" || net.role === "local") useAbility(0);
-    else emit({ t: "ability" });
+    castAbility();
   });
 
   stage.addEventListener("click", (event) => {
+    if (event.target.closest("[data-hex]")) {
+      event.preventDefault();
+      castAbility();
+      return;
+    }
     const action = event.target.closest("[data-action]");
     if (!action) return;
     const name = action.dataset.action;
