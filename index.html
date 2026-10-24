@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unfair Games</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpolygon points='32,4 58,18 58,46 32,60 6,46 6,18' fill='%2307070d' stroke='%232ee7ff' stroke-width='3'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-family='Arial' font-size='18' font-weight='700' fill='%23ff2ea6'%3EUG%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=powers">
+</head>
+<body>
+  <div class="splash" id="splash">
+    <div class="splash-veil"></div>
+    <div class="splash-mark">
+      <svg class="emblem" viewBox="0 0 240 240" aria-hidden="true">
+        <polygon class="hex hex-outer" points="120,16 210,68 210,172 120,224 30,172 30,68"></polygon>
+        <polygon class="hex hex-inner" points="120,40 188,80 188,160 120,200 52,160 52,80"></polygon>
+        <path class="mono-stroke" d="M66 94 V130 Q66 154 94 154 Q122 154 122 130 V94"></path>
+        <path class="mono-stroke" d="M176 116 H150 M172 102 C164 86 138 84 126 102 C112 122 116 152 140 160 C160 168 180 150 180 132"></path>
+        <circle class="node" cx="120" cy="16" r="3.5"></circle>
+        <circle class="node node-magenta" cx="210" cy="172" r="3.5"></circle>
+        <circle class="node" cx="30" cy="68" r="3.5"></circle>
+      </svg>
+      <p class="splash-word">U.G.</p>
+    </div>
+  </div>
+
+  <div class="page">
+    <header class="topbar">
+      <a class="brand" href="#games">
+        <svg class="brand-mark" viewBox="0 0 240 240" aria-hidden="true">
+          <polygon class="hex hex-outer" points="120,16 210,68 210,172 120,224 30,172 30,68"></polygon>
+          <path class="mono-stroke" d="M66 94 V130 Q66 154 94 154 Q122 154 122 130 V94"></path>
+          <path class="mono-stroke" d="M176 116 H150 M172 102 C164 86 138 84 126 102 C112 122 116 152 140 160 C160 168 180 150 180 132"></path>
+        </svg>
+        <span class="brand-name">Unfair Games</span>
+      </a>
+      <p class="rigged">The games are rigged.</p>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">U.G. / arcade</p>
+        <h1>Famous games. Bent rules.</h1>
+        <p class="lede">A neon floor of classics that do not play fair. Pick a table. The house already knows the ending.</p>
+      </section>
+
+      <section class="games" id="games" aria-label="Games">
+        <button class="card card-play" type="button" id="open-ttt">
+          <div class="card-icon" aria-hidden="true">
+            <svg viewBox="0 0 64 64">
+              <path d="M24 10 v44 M40 10 v44 M10 24 h44 M10 40 h44"></path>
+            </svg>
+          </div>
+          <h2>Tic-tac-toe</h2>
+          <p>The board already picked a winner.</p>
+          <span class="soon soon-play">Play</span>
+        </button>
+
+        <button class="card card-play" type="button" id="open-c4">
+          <div class="card-icon" aria-hidden="true">
+            <svg viewBox="0 0 64 64">
+              <circle cx="20" cy="22" r="6"></circle>
+              <circle cx="36" cy="22" r="6"></circle>
+              <circle cx="28" cy="36" r="6"></circle>
+              <circle cx="44" cy="36" r="6"></circle>
+              <circle cx="24" cy="50" r="6"></circle>
+            </svg>
+          </div>
+          <h2>Connect Four</h2>
+          <p>Gravity changes its mind.</p>
+          <span class="soon soon-play">Play</span>
+        </button>
+
+        <button class="card card-play" type="button" id="open-tt">
+          <div class="card-icon" aria-hidden="true">
+            <svg viewBox="0 0 64 64">
+              <path d="M14 18 h10 l8 14 -8 14 H14 l8-14 z"></path>
+              <path d="M50 18 H40 l-8 14 8 14 h10 l-8-14 z"></path>
+              <circle cx="32" cy="32" r="4"></circle>
+            </svg>
+          </div>
+          <h2>Table tennis</h2>
+          <p>Two rackets. First to three.</p>
+          <span class="soon soon-play">Play</span>
+        </button>
+      </section>
+    </main>
+  </div>
+
+  <div class="ttt" id="ttt" hidden>
+    <div class="ghost-board" id="ghost-board" aria-hidden="true"></div>
+    <div class="ttt-root" id="ttt-root"></div>
+  </div>
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <div class="c4" id="c4" hidden>
+    <div class="c4-sky" id="c4-sky" aria-hidden="true"></div>
+    <div class="c4-earth" aria-hidden="true"></div>
+    <div class="c4-ground" aria-hidden="true">
+      <span class="c4-crater c4-crater-a"></span>
+      <span class="c4-crater c4-crater-b"></span>
+      <span class="c4-crater c4-crater-c"></span>
+      <span class="c4-crater c4-crater-d"></span>
+      <span class="c4-rock c4-rock-a"></span>
+      <span class="c4-rock c4-rock-b"></span>
+      <span class="c4-rock c4-rock-c"></span>
+    </div>
+    <div class="c4-void" id="c4-void" aria-hidden="true"></div>
+    <div class="c4-root" id="c4-root"></div>
+  </div>
+
+  <div class="tt" id="tt" hidden>
+    <canvas id="tt-canvas"></canvas>
+    <div class="tt-root" id="tt-root"></div>
+  </div>
+
+  <script src="script.js"></script>
+  <script src="tictactoe.js"></script>
+  <script src="connect4.js"></script>
+  <script src="tabletennis.js?v=powers"></script>
+</body>
+</html>
