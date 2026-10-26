@@ -76,7 +76,16 @@
     clone: "Clone",
     gate: "Gate",
     drill: "Drill",
+    boomerang: "Boomerang",
+    random: "Random",
+    spike: "Spike",
+    katana: "Katana",
+    rocket: "Rocket",
+    popcorn: "Popcorn",
+    whirlpool: "Whirlpool",
   };
+
+  const ABILITIES = ["light", "mischief", "trick", "frost", "tempest", "ferris", "laser", "clone", "gate", "drill", "boomerang", "spike", "katana", "rocket", "popcorn", "whirlpool"];
 
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 
@@ -108,6 +117,7 @@
   let viewDpr = 0;
   const motes = [];
   const shocks = [];
+  const slashes = [];
   const links = [];
   const portals = [];
   let cam = { x: MID_X, y: MID_Y, z: 1, tx: MID_X, ty: MID_Y, tz: 1, shake: 0, cinema: 0, bars: 0, flash: 0 };
@@ -115,6 +125,7 @@
   let noiseBuf = null;
   let fxOn = true;
   let railAt = 0;
+  let randomLast = [null, null];
 
   const STICK_FX = {
     light: "#7dd3fc",
@@ -127,6 +138,13 @@
     clone: "#cbd5e1",
     gate: "#ff2ea6",
     drill: "#fb923c",
+    boomerang: "#fbbf24",
+    random: "#e2e8f0",
+    spike: "#cbd5e1",
+    katana: "#fecaca",
+    rocket: "#fb923c",
+    popcorn: "#fde68a",
+    whirlpool: "#38bdf8",
   };
 
   const tone = (freq, dur, type, gain) => {
@@ -276,41 +294,169 @@
     };
   };
 
-  const bendLight = (list, hitter, struck) => {
-    if (!struck || struck.id === 0) return;
+  const bendLight = (list, cue, ignoreId) => {
+    if (!cue || cue.id !== 0) return;
+    const speed = Math.hypot(cue.vx, cue.vy);
+    if (speed < 18) return;
+    const reach = 1200;
     let best = null;
-    let bestD = Infinity;
+    let bestD = reach * reach;
     list.forEach((other) => {
-      if (!other.in || other === struck || other === hitter) return;
-      const d = (other.x - struck.x) ** 2 + (other.y - struck.y) ** 2;
-      if (d < bestD) {
-        bestD = d;
-        best = other;
-      }
+      if (!other.in || other.id === 0 || other.id === ignoreId) return;
+      const dx = other.x - cue.x;
+      const dy = other.y - cue.y;
+      const d = dx * dx + dy * dy;
+      if (d < (R * 2.8) ** 2 || d >= bestD) return;
+      const ahead = cue.vx * dx + cue.vy * dy;
+      if (ahead <= 0) return;
+      bestD = d;
+      best = other;
     });
     if (!best) return;
-    const ahead = (struck.x - hitter.x) * (best.x - struck.x) + (struck.y - hitter.y) * (best.y - struck.y);
-    if (ahead <= 0) return;
-    const speed = Math.hypot(struck.vx, struck.vy);
-    if (speed < 18) return;
-    const mag = Math.hypot(best.x - struck.x, best.y - struck.y) || 1;
+    const mag = Math.hypot(best.x - cue.x, best.y - cue.y) || 1;
+    const fresh = cue.lightTarget !== best.id;
+    let sped = speed;
+    if (fresh) {
+      cue.lightTarget = best.id;
+      const bends = cue.lightBends || 0;
+      if (bends < 5) {
+        cue.lightBends = bends + 1;
+        sped = Math.min(MAX_SPEED * 10, speed * 1.7);
+      }
+    }
     const blend = 0.92;
-    const vx = struck.vx * (1 - blend) + ((best.x - struck.x) / mag) * speed * blend;
-    const vy = struck.vy * (1 - blend) + ((best.y - struck.y) / mag) * speed * blend;
+    const vx = cue.vx * (1 - blend) + ((best.x - cue.x) / mag) * sped * blend;
+    const vy = cue.vy * (1 - blend) + ((best.y - cue.y) / mag) * sped * blend;
     const next = Math.hypot(vx, vy) || 1;
-    struck.vx = (vx / next) * speed;
-    struck.vy = (vy / next) * speed;
-    struck.flash = 0.7;
+    cue.vx = (vx / next) * sped;
+    cue.vy = (vy / next) * sped;
+    cue.flash = 0.7;
     best.flash = 0.85;
     if (list === balls) {
-      links.push({ x1: struck.x, y1: struck.y, x2: best.x, y2: best.y, life: 0.95 });
-      burst(struck.x, struck.y, "#e0f2fe", 16, 240);
+      links.push({ x1: cue.x, y1: cue.y, x2: best.x, y2: best.y, life: 0.95 });
+      burst(cue.x, cue.y, "#e0f2fe", 16, 240);
       burst(best.x, best.y, "#7dd3fc", 14, 200);
-      ring(struck.x, struck.y, "#e0f2fe", 32);
+      ring(cue.x, cue.y, "#e0f2fe", 32);
       ring(best.x, best.y, "#7dd3fc", 26);
       tone(860, 0.07, "sine", 0.035);
       sweep(700, 1100, 0.1, "sine", 0.025);
     }
+  };
+
+  const boomSide = (x, y) => ((Math.round(x / 10) + Math.round(y / 10)) % 2 === 0 ? 1 : -1);
+
+  const steerBoom = (ball, dt) => {
+    const b = ball.boom;
+    if (!b || b.phase === "done") return;
+    const speed = Math.hypot(ball.vx, ball.vy);
+    b.dist += speed * dt;
+    const dx = b.ox - ball.x;
+    const dy = b.oy - ball.y;
+    const home = Math.hypot(dx, dy) || 1;
+    if (b.phase === "out") {
+      if (b.dist > 280 && speed > 80) {
+        b.phase = "turn";
+        b.hold = Math.max(420, speed);
+      }
+      return;
+    }
+    const hold = b.hold || Math.max(420, speed);
+    const tx = speed > 1 ? ball.vx / speed : 1;
+    const ty = speed > 1 ? ball.vy / speed : 0;
+    const px = -ty * b.side;
+    const py = tx * b.side;
+    const backx = dx / home;
+    const backy = dy / home;
+    const heading = tx * backx + ty * backy;
+    if (b.phase === "turn" && heading > 0.62) b.phase = "back";
+    const aimX = b.phase === "back" ? backx : px * 0.9 + backx * 0.45;
+    const aimY = b.phase === "back" ? backy : py * 0.9 + backy * 0.45;
+    const am = Math.hypot(aimX, aimY) || 1;
+    const follow = b.phase === "back" ? 3.1 : 4.2;
+    let vx = tx + (aimX / am - tx) * Math.min(1, follow * dt);
+    let vy = ty + (aimY / am - ty) * Math.min(1, follow * dt);
+    const m = Math.hypot(vx, vy) || 1;
+    const keep = b.phase === "back" && home < 80 ? Math.max(140, hold * (home / 80)) : hold;
+    ball.vx = (vx / m) * keep;
+    ball.vy = (vy / m) * keep;
+    if (b.phase === "back" && home < 22) {
+      b.phase = "done";
+      ball.vx = 0;
+      ball.vy = 0;
+    }
+  };
+
+  const spikeNeed = (list) => {
+    const n = list.filter((ball) => ball.in && ball.id > 0 && ball.id !== 8).length;
+    return n < 3 ? 1 : 3;
+  };
+
+  const placeCluster = (list) => {
+    for (let pass = 0; pass < 3; pass += 1) {
+      list.forEach((ball) => {
+        if (!ball.in || !ball.stuck) return;
+        const parent = list.find((item) => item.id === ball.stuck.parent);
+        if (!parent) return;
+        ball.x = parent.x + Math.cos(ball.stuck.ang) * (R * 2.05);
+        ball.y = parent.y + Math.sin(ball.stuck.ang) * (R * 2.05);
+        ball.vx = parent.vx;
+        ball.vy = parent.vy;
+      });
+    }
+  };
+
+  const releaseSpike = (list, cue) => {
+    if (!cue || cue.spikeBoom) return;
+    const stuck = list.filter((ball) => ball.stuck);
+    if (!stuck.length && !cue.spikeFinale) return;
+    cue.spikeBoom = true;
+    cue.spikeLock = 0;
+    cue.spikeFinale = false;
+    cue.spikeReady = false;
+    stuck.forEach((ball) => {
+      ball.vx = ball.stuck.dirx * 860;
+      ball.vy = ball.stuck.diry * 860;
+      ball.stuck = null;
+    });
+    if (!fxOn) return;
+    ring(cue.x, cue.y, "#fff", 64);
+    ring(cue.x, cue.y, "#cbd5e1", 40);
+    burst(cue.x, cue.y, "#f8fafc", 22, 320);
+    spark(cue.x, cue.y, "#e2e8f0", 16, 260);
+    crack(0.12, 0.06, 240);
+    tone(180, 0.16, "square", 0.05);
+    cam.shake = Math.max(cam.shake, 8);
+  };
+
+  const attachSpike = (list, host, ball, dirx, diry) => {
+    const cue = list[0];
+    if (!cue || cue.spikeBoom || ball.stuck || ball.id === 8 || ball.id <= 0) return;
+    const ang = Math.atan2(ball.y - host.y, ball.x - host.x);
+    ball.stuck = { parent: host.id, ang, dirx, diry };
+    ball.vx = 0;
+    ball.vy = 0;
+    const count = list.filter((item) => item.stuck).length;
+    const sp = Math.min(2000, Math.max(80, Math.hypot(cue.vx, cue.vy)) * 1.5);
+    const m = Math.hypot(cue.vx, cue.vy) || 1;
+    cue.vx = (cue.vx / m) * sp;
+    cue.vy = (cue.vy / m) * sp;
+    if (count >= spikeNeed(list)) {
+      cue.spikeFinale = true;
+      cue.spikeLock = 0;
+    } else cue.spikeLock = sp;
+    if (fxOn) {
+      spark(ball.x, ball.y, "#e2e8f0", 8, 140);
+      ring(ball.x, ball.y, "#fff", 22);
+      tone(320 + count * 80, 0.05, "square", 0.03);
+    }
+  };
+
+  const rollRandom = (who) => {
+    let pool = ABILITIES.filter((id) => id !== randomLast[who]);
+    if (!pool.length) pool = ABILITIES.slice();
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    randomLast[who] = pick;
+    return pick;
   };
 
   const curveHit = (hitter, struck, hvx, hvy, nx, ny) => {
@@ -452,7 +598,7 @@
   };
 
   const rails = (ball, hooks) => {
-    if (!ball.in || ball.frozen) return;
+    if (!ball.in || ball.frozen || ball.pop) return;
     const jaw = CORNER;
     const nearTop = ball.y < FELT_T + jaw;
     const nearBot = ball.y > FELT_B - jaw;
@@ -512,6 +658,7 @@
       for (let j = i + 1; j < live.length; j += 1) {
         const a = live[i];
         const b = live[j];
+        if ((a.id === 0 || a.stuck) && (b.id === 0 || b.stuck)) continue;
         if (a.frozen || b.frozen) continue;
         if ((a.clone && b.id === 0) || (b.clone && a.id === 0)) continue;
         let dx = b.x - a.x;
@@ -523,6 +670,7 @@
           dist = 1;
         }
         if (dist >= R * 2) continue;
+        if (a.pop || b.pop) continue;
         const nx = dx / dist;
         const ny = dy / dist;
         const overlap = R * 2 - dist;
@@ -558,7 +706,30 @@
   };
 
   const moveBall = (ball, dt) => {
-    if (!ball.in || ball.frozen) return;
+    if (!ball.in || ball.frozen || ball.stuck) return;
+    if (ball.pop) {
+      const pop = ball.pop;
+      pop.t += dt;
+      const u = pop.t / pop.dur;
+      if (u >= 1) {
+        ball.x = pop.x;
+        ball.y = pop.y;
+        ball.vx = Math.cos(pop.ang) * 280;
+        ball.vy = Math.sin(pop.ang) * 280;
+        ball.pop = null;
+        if (fxOn) {
+          burst(ball.x, ball.y, "#fde68a", 12, 180);
+          ring(ball.x, ball.y, "#fff7ed", 24);
+          tone(640, 0.05, "square", 0.03);
+        }
+        return;
+      }
+      ball.x = pop.sx + (pop.x - pop.sx) * u;
+      ball.y = pop.sy + (pop.y - pop.sy) * u;
+      ball.vx = 0;
+      ball.vy = 0;
+      return;
+    }
     if (ball.orbit) {
       const spin = ball.orbit;
       spin.ang += spin.omega * dt;
@@ -586,9 +757,72 @@
       ball.vx = vx;
       ball.curve *= Math.exp(-1.65 * dt);
     } else ball.curve = 0;
+    if (ball.boom && ball.id === 0 && ball.boom.phase !== "done") {
+      const nextSpeed = Math.hypot(ball.vx, ball.vy);
+      if (ball.boom.phase === "out" && nextSpeed > 0) {
+        const drag = onIce(ball) ? 16 : FRICTION;
+        const slowed = Math.max(0, nextSpeed - drag * dt);
+        ball.vx *= slowed / nextSpeed;
+        ball.vy *= slowed / nextSpeed;
+      }
+      steerBoom(ball, dt);
+      if (ball.boom && ball.boom.phase === "done") {
+        ball.boom = null;
+        ball.vx = 0;
+        ball.vy = 0;
+      }
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+      return;
+    }
+    if (ball.id === 0 && ball.spikeLock && !ball.spikeFinale) {
+      const m = Math.hypot(ball.vx, ball.vy) || 1;
+      ball.vx = (ball.vx / m) * ball.spikeLock;
+      ball.vy = (ball.vy / m) * ball.spikeLock;
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+      return;
+    }
+    if (ball.id === 0 && ball.lightHold > 0) {
+      ball.lightHold -= dt;
+      if (ball.lightHold > 0) {
+        const m = Math.hypot(ball.vx, ball.vy) || 1;
+        const keep = ball.lightSpeed || m;
+        ball.vx = (ball.vx / m) * keep;
+        ball.vy = (ball.vy / m) * keep;
+        ball.x += ball.vx * dt;
+        ball.y += ball.vy * dt;
+        return;
+      }
+    }
+    if (ball.rocket && ball.rocket.t > 0) {
+      ball.rocket.t -= dt;
+      const burn = Math.hypot(ball.vx, ball.vy);
+      if (burn > 1) {
+        const next = Math.min(ball.rocket.cap, burn + ball.rocket.accel * dt);
+        ball.vx = (ball.vx / burn) * next;
+        ball.vy = (ball.vy / burn) * next;
+      }
+      if (fxOn) {
+        const ang = Math.atan2(ball.vy, ball.vx);
+        motes.push({
+          x: ball.x - Math.cos(ang) * (R + 6),
+          y: ball.y - Math.sin(ang) * (R + 6),
+          vx: -Math.cos(ang) * 90 + (Math.random() - 0.5) * 50,
+          vy: -Math.sin(ang) * 90 + (Math.random() - 0.5) * 50,
+          life: 0.24,
+          color: Math.random() < 0.45 ? "#fde68a" : "#fb923c",
+          r: 2.1 + Math.random() * 2.2,
+        });
+      }
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+      if (ball.rocket.t <= 0) ball.rocket = null;
+      return;
+    }
     const nextSpeed = Math.hypot(ball.vx, ball.vy);
     if (nextSpeed > 0) {
-      const drag = onIce(ball) ? 16 : FRICTION;
+      const drag = ball.id === 0 && ball.spikeFinale ? 680 : onIce(ball) ? 16 : FRICTION;
       const slowed = Math.max(0, nextSpeed - drag * dt);
       const scale = slowed / nextSpeed;
       ball.vx *= scale;
@@ -598,6 +832,7 @@
         ball.vy = 0;
         ball.curve = 0;
       }
+      if (ball.id === 0 && ball.spikeFinale && slowed < 36) ball.spikeReady = true;
     }
     ball.x += ball.vx * dt;
     ball.y += ball.vy * dt;
@@ -613,8 +848,9 @@
     for (let s = 0; s < sub; s += 1) {
       for (let i = 0; i < list.length; i += 1) {
         moveBall(list[i], h);
-        rails(list[i], hooks);
+        if (!list[i].stuck) rails(list[i], hooks);
       }
+      placeCluster(list);
       collide(list, hooks);
       if (stick === "tempest") {
         const cue = list[0];
@@ -632,6 +868,8 @@
         }
       }
     }
+    const cue = list[0];
+    if (cue && cue.spikeReady) releaseSpike(list, cue);
   };
 
   const liveHooks = {
@@ -641,7 +879,13 @@
       if (shot.firstHit == null && (role.hitter.id === 0 || role.struck.id === 0)) {
         shot.firstHit = role.hitter.id === 0 ? role.struck.id : role.hitter.id;
       }
-      if (shot.stick === "light") bendLight(balls, role.hitter, role.struck);
+      if (shot.stick === "light" && (role.hitter.id === 0 || role.struck.id === 0)) {
+        const cueBall = role.hitter.id === 0 ? role.hitter : role.struck;
+        const other = role.hitter.id === 0 ? role.struck : role.hitter;
+        bendLight(balls, cueBall, other.id);
+        cueBall.lightSpeed = Math.hypot(cueBall.vx, cueBall.vy);
+        cueBall.lightHold = 1;
+      }
       if (shot.stick === "mischief") curveHit(role.hitter, role.struck, role.vx, role.vy, role.nx, role.ny);
       if (shot.stick === "ferris" && (role.hitter.id === 0 || role.struck.id === 0)) {
         const cue = role.hitter.id === 0 ? role.hitter : role.struck;
@@ -707,6 +951,58 @@
           ring(cx, cy, "#fb923c", 28);
         }
       }
+      if (shot.stick === "spike") {
+        const cue = balls[0];
+        const aCluster = a.id === 0 || a.stuck;
+        const bCluster = b.id === 0 || b.stuck;
+        if (aCluster !== bCluster && cue && !cue.spikeBoom) {
+          const host = aCluster ? a : b;
+          const ball = aCluster ? b : a;
+          if (!(ball.id <= 0 || ball.id === 8 || ball.stuck)) {
+          const dirx = aCluster ? qvx : pvx;
+          const diry = aCluster ? qvy : pvy;
+          const mag = Math.hypot(dirx, diry);
+          const outx = mag > 20 ? dirx / mag : (ball.x - host.x) || 1;
+          const outy = mag > 20 ? diry / mag : (ball.y - host.y) || 0;
+          const om = Math.hypot(outx, outy) || 1;
+          if (a.id === 0) {
+            const sp = Math.hypot(pvx, pvy);
+            if (sp > 1) {
+              cue.vx = pvx;
+              cue.vy = pvy;
+            }
+          } else if (b.id === 0) {
+            const sp = Math.hypot(qvx, qvy);
+            if (sp > 1) {
+              cue.vx = qvx;
+              cue.vy = qvy;
+            }
+          }
+          attachSpike(balls, host, ball, outx / om, outy / om);
+          }
+        }
+      }
+      if (shot.stick === "katana" && (role.hitter.id === 0 || role.struck.id === 0)) {
+        const other = role.hitter.id === 0 ? role.struck : role.hitter;
+        if (other.id > 0) {
+          if (!shot.cuts) shot.cuts = [];
+          if (!shot.cuts.some((cut) => cut.id === other.id)) {
+            shot.cuts.push({ id: other.id, t: 0, done: false });
+            other.flash = 0.8;
+            tone(140, 0.12, "sine", 0.03);
+            sweep(180, 90, 0.2, "triangle", 0.02);
+          }
+        }
+      }
+      if (shot.stick === "popcorn" && (role.hitter.id === 0 || role.struck.id === 0)) {
+        const other = role.hitter.id === 0 ? role.struck : role.hitter;
+        if (other.id > 0 && !other.pop) popBall(other);
+      }
+      if (shot.stick === "whirlpool" && !shot.whirl && (role.hitter.id === 0 || role.struck.id === 0)) {
+        const cueBall = role.hitter.id === 0 ? role.hitter : role.struck;
+        const other = role.hitter.id === 0 ? role.struck : role.hitter;
+        if (other.id > 0) startWhirl(balls, cueBall, other);
+      }
       const speed = Math.hypot(role.vx, role.vy);
       if (speed > 80 && clock - clickAt > 0.045) {
         clickAt = clock;
@@ -724,6 +1020,7 @@
     onPocket(ball) {
       if (!shot) return;
       if (ball.id === 0) {
+        if (shot.stick === "spike") releaseSpike(balls, balls[0]);
         shot.scratched = true;
         tone(96, 0.18, "sine", 0.07);
         sweep(160, 48, 0.22, "sawtooth", 0.04);
@@ -837,6 +1134,15 @@
     balls.forEach((ball) => {
       ball.frozen = false;
       ball.limit = null;
+      ball.boom = null;
+      ball.stuck = null;
+      ball.spikeLock = 0;
+      ball.spikeFinale = false;
+      ball.spikeReady = false;
+      ball.spikeBoom = false;
+      ball.pop = null;
+      ball.rocket = null;
+      ball.sink = 0;
     });
     for (let i = balls.length - 1; i >= 0; i -= 1) {
       if (balls[i].clone) balls.splice(i, 1);
@@ -953,6 +1259,183 @@
     }
   };
 
+  const popBall = (ball) => {
+    let land = null;
+    for (let n = 0; n < 14; n += 1) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 62 + Math.random() * 96;
+      const x = clamp(ball.x + Math.cos(ang) * dist, FELT_L + R + 10, FELT_R - R - 10);
+      const y = clamp(ball.y + Math.sin(ang) * dist, FELT_T + R + 10, FELT_B - R - 10);
+      const mouth = pockets.some((pocket) => Math.hypot(pocket.x - x, pocket.y - y) < pocket.r + R);
+      const blocked = balls.some((other) => other.in && other !== ball && !other.pop && Math.hypot(other.x - x, other.y - y) < R * 2.2);
+      if (!mouth && !blocked) {
+        land = { x, y, ang };
+        break;
+      }
+    }
+    if (!land) land = { x: ball.x, y: ball.y, ang: Math.random() * Math.PI * 2 };
+    ball.pop = { t: 0, dur: 0.4 + Math.random() * 0.18, sx: ball.x, sy: ball.y, x: land.x, y: land.y, ang: land.ang };
+    ball.vx = 0;
+    ball.vy = 0;
+    ball.orbit = null;
+    if (fxOn) {
+      burst(ball.x, ball.y, "#fde68a", 10, 150);
+      tone(880, 0.04, "square", 0.025);
+    }
+  };
+
+  const whirlPlan = (list, cue, other) => {
+    const x = clamp(other.x, FELT_L + 120, FELT_R - 120);
+    const y = clamp(other.y, FELT_T + 120, FELT_B - 120);
+    const ids = [];
+    list.forEach((ball) => {
+      if (!ball.in || ball.id <= 0) return;
+      const dist = Math.hypot(ball.x - x, ball.y - y);
+      if (ball.id !== other.id && dist > 142) return;
+      ids.push(ball.id);
+    });
+    ids.sort((a, b) => a - b);
+    const base = cue ? Math.atan2(cue.y - y, cue.x - x) : 0;
+    const rays = ids.map((id, i) => ({ id, ang: base + (Math.PI * 2 * i) / Math.max(1, ids.length) }));
+    return { x, y, rays };
+  };
+
+  const whirlGap = (count) => Math.max(R * 2.4, (count * R * 2.35) / (Math.PI * 2));
+
+  const startWhirl = (list, cue, other) => {
+    const plan = whirlPlan(list, cue, other);
+    const saved = list.filter((ball) => ball.in).map((ball) => ({ id: ball.id, vx: ball.vx, vy: ball.vy }));
+    const caught = plan.rays.map((ray) => {
+      const ball = list.find((item) => item.id === ray.id);
+      const dist = ball ? Math.hypot(ball.x - plan.x, ball.y - plan.y) : 40;
+      return { id: ray.id, ang: Math.atan2((ball ? ball.y : plan.y) - plan.y, (ball ? ball.x : plan.x) - plan.x), dist0: Math.max(22, dist), out: ray.ang };
+    });
+    list.forEach((ball) => {
+      if (!ball.in) return;
+      ball.frozen = true;
+      ball.vx = 0;
+      ball.vy = 0;
+      ball.orbit = null;
+    });
+    if (cue && cue.in) {
+      const dx = cue.x - plan.x;
+      const dy = cue.y - plan.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const rim = 96 + R + 8;
+      if (dist < rim) {
+        cue.x = clamp(plan.x + (dx / dist) * rim, FELT_L + R, FELT_R - R);
+        cue.y = clamp(plan.y + (dy / dist) * rim, FELT_T + R, FELT_B - R);
+      }
+    }
+    shot.whirl = { x: plan.x, y: plan.y, r: 96, t: 0, open: 0, caught, saved, done: false, spawned: false, buzz: 0 };
+    cam.tx = plan.x;
+    cam.ty = plan.y;
+    cam.tz = 3.2;
+    cam.bars = 1;
+    cam.shake = 1;
+    tone(90, 0.28, "sine", 0.05);
+    sweep(140, 60, 0.4, "sine", 0.03);
+    ring(plan.x, plan.y, "#7dd3fc", 40);
+  };
+
+  const holdWhirl = (dt) => {
+    const w = shot.whirl;
+    if (!w || w.done) return;
+    w.t += dt;
+    const pullU = clamp((w.t - 0.2) / 1.7, 0, 1);
+    if (!w.spawned) {
+      w.caught.forEach((bit) => {
+        const ball = balls.find((item) => item.id === bit.id && item.in);
+        if (!ball) return;
+        bit.ang += dt * (5 + pullU * 18);
+        const dist = bit.dist0 * (1 - pullU * pullU);
+        ball.x = w.x + Math.cos(bit.ang) * dist;
+        ball.y = w.y + Math.sin(bit.ang) * dist;
+        ball.sink = pullU;
+        ball.vx = 0;
+        ball.vy = 0;
+      });
+    }
+    if (w.t < 0.5) {
+      w.open = w.t / 0.5;
+      cam.tz = 3.2;
+      cam.tx = w.x;
+      cam.ty = w.y;
+      cam.bars = 1;
+      cam.shake = 0.7;
+    } else if (w.t < 2.05) {
+      w.open = 1;
+      cam.tz = 3.2;
+      cam.tx = w.x;
+      cam.ty = w.y;
+      cam.bars = 1;
+      cam.shake = 1.4 + pullU * 5;
+      w.buzz -= dt;
+      if (w.buzz <= 0) {
+        w.buzz = 0.16;
+        tone(70 + pullU * 40, 0.12, "sine", 0.03);
+      }
+    } else if (w.t < 2.4) {
+      w.open = 1 - (w.t - 2.05) / 0.35;
+      cam.tz = 3.2;
+      cam.shake = 2.4;
+      w.caught.forEach((bit) => {
+        const ball = balls.find((item) => item.id === bit.id);
+        if (ball) ball.sink = 1;
+      });
+    } else if (!w.spawned) {
+      w.spawned = true;
+      w.done = true;
+      w.open = 0;
+      const gap = whirlGap(w.caught.length);
+      const spd = 980;
+      w.caught.forEach((bit) => {
+        const ball = balls.find((item) => item.id === bit.id && item.in);
+        if (!ball) return;
+        ball.x = w.x + Math.cos(bit.out) * gap;
+        ball.y = w.y + Math.sin(bit.out) * gap;
+        ball.vx = Math.cos(bit.out) * spd;
+        ball.vy = Math.sin(bit.out) * spd;
+        ball.sink = 0;
+        ball.frozen = false;
+        spark(ball.x, ball.y, "#e0f2fe", 8, 220, bit.out);
+      });
+      balls.forEach((ball) => {
+        if (w.caught.some((bit) => bit.id === ball.id)) return;
+        ball.frozen = false;
+        ball.sink = 0;
+        const saved = w.saved.find((item) => item.id === ball.id);
+        if (saved) {
+          ball.vx = saved.vx;
+          ball.vy = saved.vy;
+        }
+      });
+      cam.tz = 1;
+      cam.tx = MID_X;
+      cam.ty = MID_Y;
+      cam.bars = 0;
+      cam.flash = 1;
+      cam.shake = 16;
+      burst(w.x, w.y, "#ffffff", 24, 520);
+      burst(w.x, w.y, "#7dd3fc", 18, 380);
+      ring(w.x, w.y, "#ffffff", 90);
+      ring(w.x, w.y, "#38bdf8", 64);
+      tone(90, 0.16, "square", 0.07);
+      sweep(80, 640, 0.18, "sawtooth", 0.04);
+      crack(0.12, 0.05, 180);
+      releaseCam();
+      cam.flash = 1;
+      cam.shake = 16;
+    } else {
+      w.done = true;
+      balls.forEach((ball) => {
+        ball.frozen = false;
+        ball.sink = 0;
+      });
+      releaseCam();
+    }
+  };
+
   const dropClone = () => {
     for (let i = balls.length - 1; i >= 0; i -= 1) {
       const ball = balls[i];
@@ -1025,10 +1508,21 @@
   const shoot = () => {
     const cue = balls[0];
     if (!cue || !cue.in || phase !== "aim") return;
-    const laser = sticks[player] === "laser" && pull >= MAX_PULL - 8;
+    let active = sticks[player];
+    if (active === "random") active = rollRandom(player);
+    const laser = (sticks[player] === "laser" && pull >= MAX_PULL - 8) || (sticks[player] === "random" && active === "laser");
     const power = 0.2 + (pull / MAX_PULL) * 0.8;
-    const orb = sticks[player] === "trick" && charge >= 2;
+    const orb = (sticks[player] === "trick" && charge >= 2) || (sticks[player] === "random" && active === "trick");
     const speed = orb ? MAX_SPEED * 3 : power * MAX_SPEED;
+    cue.boom = null;
+    cue.lightBends = 0;
+    cue.lightTarget = 0;
+    cue.lightHold = 0;
+    cue.lightSpeed = 0;
+    cue.spikeLock = 0;
+    cue.spikeFinale = false;
+    cue.spikeReady = false;
+    cue.spikeBoom = false;
     if (!laser) {
       cue.vx = aim.x * speed;
       cue.vy = aim.y * speed;
@@ -1047,7 +1541,7 @@
     }
     shot = {
       player,
-      stick: sticks[player],
+      stick: active,
       firstHit: null,
       pocketed: [],
       scratched: false,
@@ -1068,6 +1562,13 @@
       ring(cue.x, cue.y, "#ffffff", 28);
     }
     if (shot.stick === "gate") shot.gated = [];
+    if (shot.stick === "katana") shot.cuts = [];
+    if (shot.stick === "boomerang") {
+      cue.boom = { ox: cue.x, oy: cue.y, side: boomSide(cue.x, cue.y), dist: 0, phase: "out" };
+    }
+    if (shot.stick === "rocket") {
+      cue.rocket = { t: 1.05, accel: 2400, cap: Math.min(MAX_SPEED * 2.8, Math.max(speed * 2.4, speed + 980)) };
+    }
     isBreak = false;
     phase = "run";
     charging = false;
@@ -1090,7 +1591,16 @@
     if (shot.stick === "mischief") sweep(740, 200, 0.14, "sawtooth", 0.02);
     if (shot.stick === "drill") sweep(90, 42, 0.14, "sawtooth", 0.028);
     if (shot.stick === "gate") sweep(260, 900, 0.12, "sine", 0.028);
-    status = laser ? "Laser." : orb ? "Orb away." : shot.stick === "clone" ? "Clone." : shot.stick === "gate" ? "Gate." : shot.stick === "drill" ? "Drill." : "Rolling.";
+    if (shot.stick === "boomerang") sweep(480, 160, 0.16, "sine", 0.028);
+    if (shot.stick === "spike") tone(220, 0.06, "square", 0.03);
+    if (shot.stick === "katana") sweep(660, 220, 0.12, "sawtooth", 0.02);
+    if (shot.stick === "rocket") sweep(180, 720, 0.18, "sawtooth", 0.035);
+    if (shot.stick === "popcorn") tone(740, 0.05, "square", 0.03);
+    if (shot.stick === "whirlpool") sweep(160, 70, 0.16, "sine", 0.03);
+    if (sticks[player] === "random") tone(880, 0.07, "square", 0.03);
+    status = sticks[player] === "random"
+      ? `Random · ${STICK_NAME[shot.stick]}.`
+      : laser ? "Laser." : orb ? "Orb away." : shot.stick === "clone" ? "Clone." : shot.stick === "gate" ? "Gate." : shot.stick === "drill" ? "Drill." : shot.stick === "boomerang" ? "Boomerang." : shot.stick === "spike" ? "Spike." : shot.stick === "katana" ? "Katana." : shot.stick === "rocket" ? "Rocket." : shot.stick === "popcorn" ? "Popcorn." : shot.stick === "whirlpool" ? "Whirlpool." : "Rolling.";
     tone(160, 0.05, "triangle", 0.07);
     syncHud();
   };
@@ -1150,7 +1660,10 @@
     let hideObj = false;
     let hits = 0;
     let drillMark = null;
+    let whirlMark = null;
     const gateMarks = [];
+    const cutMarks = [];
+    const popMarks = [];
     const stick = sticks[player];
     const hooks = {
       onHit(a, b, nx, ny, pvx, pvy, qvx, qvy) {
@@ -1161,7 +1674,13 @@
           const object = ghost.find((ball) => ball.id === tracked);
           hideObj = !!(object && onIce(object));
         }
-        if (stick === "light" && role.struck.id !== 0) bendLight(ghost, role.hitter, role.struck);
+        if (stick === "light" && (role.hitter.id === 0 || role.struck.id === 0)) {
+          const cueBall = role.hitter.id === 0 ? role.hitter : role.struck;
+          const other = role.hitter.id === 0 ? role.struck : role.hitter;
+          bendLight(ghost, cueBall, other.id);
+          cueBall.lightSpeed = Math.hypot(cueBall.vx, cueBall.vy);
+          cueBall.lightHold = 1;
+        }
         if (stick === "mischief") curveHit(role.hitter, role.struck, role.vx, role.vy, role.nx, role.ny);
         if (stick === "ferris" && (role.hitter.id === 0 || role.struck.id === 0)) {
           const wheel = role.hitter.id === 0 ? role.hitter : role.struck;
@@ -1175,10 +1694,53 @@
             hits = 20;
           }
         }
+        if (stick === "whirlpool" && !whirlMark && (role.hitter.id === 0 || role.struck.id === 0)) {
+          const cueBall = role.hitter.id === 0 ? role.hitter : role.struck;
+          const obj = role.hitter.id === 0 ? role.struck : role.hitter;
+          if (obj.id > 0) {
+            whirlMark = whirlPlan(ghost, cueBall, obj);
+            hits = 20;
+          }
+        }
+        if (stick === "popcorn" && (role.hitter.id === 0 || role.struck.id === 0)) {
+          const obj = role.hitter.id === 0 ? role.struck : role.hitter;
+          if (obj.id > 0 && !popMarks.some((mark) => mark.id === obj.id)) popMarks.push({ id: obj.id, x: obj.x, y: obj.y });
+        }
         if (stick === "gate" && (role.hitter.id === 0 || role.struck.id === 0)) {
           const obj = role.hitter.id === 0 ? role.struck : role.hitter;
           if (obj.id > 0 && !gateMarks.some((mark) => mark.id === obj.id)) {
             gateMarks.push({ id: obj.id, x: obj.x, y: obj.y, dir: Math.atan2(role.vy, role.vx) });
+          }
+        }
+        if (stick === "spike") {
+          const aCluster = a.id === 0 || a.stuck;
+          const bCluster = b.id === 0 || b.stuck;
+          if (aCluster !== bCluster) {
+            const host = aCluster ? a : b;
+            const ball = aCluster ? b : a;
+            if (!(ball.id <= 0 || ball.id === 8 || ball.stuck)) {
+            const dirx = aCluster ? qvx : pvx;
+            const diry = aCluster ? qvy : pvy;
+            const mag = Math.hypot(dirx, diry);
+            const outx = mag > 20 ? dirx / mag : (ball.x - host.x) || 1;
+            const outy = mag > 20 ? diry / mag : (ball.y - host.y) || 0;
+            const om = Math.hypot(outx, outy) || 1;
+            const cueBall = ghost[0];
+            if (a.id === 0 && Math.hypot(pvx, pvy) > 1) {
+              cueBall.vx = pvx;
+              cueBall.vy = pvy;
+            } else if (b.id === 0 && Math.hypot(qvx, qvy) > 1) {
+              cueBall.vx = qvx;
+              cueBall.vy = qvy;
+            }
+            attachSpike(ghost, host, ball, outx / om, outy / om);
+            }
+          }
+        }
+        if (stick === "katana" && (role.hitter.id === 0 || role.struck.id === 0)) {
+          const obj = role.hitter.id === 0 ? role.struck : role.hitter;
+          if (obj.id > 0 && !cutMarks.some((mark) => mark.id === obj.id)) {
+            cutMarks.push({ id: obj.id, x: obj.x, y: obj.y });
           }
         }
       },
@@ -1197,14 +1759,21 @@
         }
       });
     }
+    if (stick === "boomerang") {
+      cue.boom = { ox: cue.x, oy: cue.y, side: boomSide(cue.x, cue.y), dist: 0, phase: "out" };
+    }
+    if (stick === "rocket") {
+      const spd = Math.hypot(cue.vx, cue.vy);
+      cue.rocket = { t: 1.05, accel: 2400, cap: Math.min(MAX_SPEED * 2.8, Math.max(spd * 2.4, spd + 980)) };
+    }
     fxOn = false;
     let time = 0;
-    const limit = stick === "ferris" ? 1.55 : 1.12;
-    while (time < limit && hits < (stick === "ferris" ? 8 : 4)) {
+    const limit = stick === "ferris" ? 1.55 : stick === "boomerang" ? 2.4 : stick === "light" ? 2.6 : stick === "rocket" ? 1.55 : 1.12;
+    while (time < limit && hits < (stick === "ferris" || stick === "boomerang" || stick === "light" ? 8 : 4)) {
       step(ghost, 0.02, hooks, stick);
       time += 0.02;
       if (cue.in) cuePath.push({ x: cue.x, y: cue.y });
-      if (tracked >= 0 && !hideObj && stick !== "gate") {
+      if (tracked >= 0 && !hideObj && stick !== "gate" && stick !== "popcorn" && stick !== "whirlpool") {
         const object = ghost.find((ball) => ball.id === tracked);
         if (object && object.in) objPath.push({ x: object.x, y: object.y });
       }
@@ -1212,6 +1781,35 @@
         const followed = ghost.find((ball) => ball.id === windId);
         if (followed && followed.in) wind.push({ x: followed.x, y: followed.y });
       }
+    }
+    if (whirlMark && whirlMark.rays && whirlMark.rays.length) {
+      const gap = whirlGap(whirlMark.rays.length);
+      const spd = 980;
+      ghost.forEach((ball) => {
+        ball.vx = 0;
+        ball.vy = 0;
+        ball.frozen = false;
+      });
+      const flying = [];
+      whirlMark.rays.forEach((ray) => {
+        const ball = ghost.find((item) => item.id === ray.id && item.in);
+        if (!ball) return;
+        ball.x = whirlMark.x + Math.cos(ray.ang) * gap;
+        ball.y = whirlMark.y + Math.sin(ray.ang) * gap;
+        ball.vx = Math.cos(ray.ang) * spd;
+        ball.vy = Math.sin(ray.ang) * spd;
+        flying.push({ ball, path: [{ x: ball.x, y: ball.y }] });
+      });
+      let burstTime = 0;
+      const quiet = { onHit() {}, onPocket(ball) { ball.in = false; } };
+      while (burstTime < 0.9) {
+        step(ghost, 0.02, quiet, "whirlpool");
+        burstTime += 0.02;
+        flying.forEach((item) => {
+          if (item.ball.in) item.path.push({ x: item.ball.x, y: item.ball.y });
+        });
+      }
+      whirlMark.paths = flying.map((item) => item.path);
     }
     fxOn = true;
     return {
@@ -1221,6 +1819,9 @@
       stick,
       drill: drillMark,
       gates: gateMarks,
+      cuts: cutMarks,
+      whirl: whirlMark,
+      pops: popMarks,
     };
   };
 
@@ -1383,8 +1984,39 @@
   };
 
   const drawBall = (ball) => {
+    const hop = ball.pop ? Math.sin(clamp(ball.pop.t / ball.pop.dur, 0, 1) * Math.PI) * 58 : 0;
     ctx.save();
     ctx.translate(ball.x, ball.y);
+    if (hop) {
+      ctx.fillStyle = "rgba(0,0,0,0.22)";
+      ctx.beginPath();
+      ctx.ellipse(3, 8, R * 0.5, R * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.translate(0, -hop);
+    }
+    if (ball.rocket && ball.rocket.t > 0) {
+      const ang = Math.atan2(ball.vy, ball.vx);
+      ctx.save();
+      ctx.rotate(ang);
+      ctx.fillStyle = "#fb923c";
+      ctx.beginPath();
+      ctx.moveTo(-R * 0.2, -6);
+      ctx.lineTo(-R - 26, 0);
+      ctx.lineTo(-R * 0.2, 6);
+      ctx.fill();
+      ctx.fillStyle = "#fde68a";
+      ctx.beginPath();
+      ctx.moveTo(-R * 0.1, -3);
+      ctx.lineTo(-R - 14, 0);
+      ctx.lineTo(-R * 0.1, 3);
+      ctx.fill();
+      ctx.restore();
+    }
+    if ((ball.sink || 0) > 0.02) {
+      ctx.globalAlpha = 1 - ball.sink;
+      const shrink = 1 - ball.sink * 0.72;
+      ctx.scale(shrink, shrink);
+    }
     ctx.fillStyle = "rgba(0,0,0,0.28)";
     ctx.beginPath();
     ctx.ellipse(3.5, 6, R * 0.86, R * 0.4, 0, 0, Math.PI * 2);
@@ -1573,6 +2205,44 @@
       wood.addColorStop(0.28, "#44403c");
       wood.addColorStop(0.7, "#1c1917");
       wood.addColorStop(1, "#0c0a09");
+    } else if (kind === "boomerang") {
+      wood.addColorStop(0, "#fffbeb");
+      wood.addColorStop(0.2, "#fbbf24");
+      wood.addColorStop(0.62, "#b45309");
+      wood.addColorStop(1, "#451a03");
+    } else if (kind === "random") {
+      wood.addColorStop(0, "#f8fafc");
+      wood.addColorStop(0.18, "#e2e8f0");
+      wood.addColorStop(0.45, "#334155");
+      wood.addColorStop(0.72, "#f8fafc");
+      wood.addColorStop(1, "#0f172a");
+    } else if (kind === "spike") {
+      wood.addColorStop(0, "#f8fafc");
+      wood.addColorStop(0.12, "#cbd5e1");
+      wood.addColorStop(0.4, "#475569");
+      wood.addColorStop(1, "#0f172a");
+    } else if (kind === "katana") {
+      wood.addColorStop(0, "#fff");
+      wood.addColorStop(0.08, "#fecaca");
+      wood.addColorStop(0.2, "#991b1b");
+      wood.addColorStop(0.7, "#1c1917");
+      wood.addColorStop(1, "#0a0a0a");
+    } else if (kind === "rocket") {
+      wood.addColorStop(0, "#fff7ed");
+      wood.addColorStop(0.12, "#fde68a");
+      wood.addColorStop(0.28, "#ea580c");
+      wood.addColorStop(0.7, "#7f1d1d");
+      wood.addColorStop(1, "#1c1917");
+    } else if (kind === "popcorn") {
+      wood.addColorStop(0, "#fffbeb");
+      wood.addColorStop(0.2, "#fde68a");
+      wood.addColorStop(0.55, "#f59e0b");
+      wood.addColorStop(1, "#78350f");
+    } else if (kind === "whirlpool") {
+      wood.addColorStop(0, "#e0f2fe");
+      wood.addColorStop(0.16, "#38bdf8");
+      wood.addColorStop(0.48, "#075985");
+      wood.addColorStop(1, "#082f49");
     } else {
       wood.addColorStop(0, "#ddd6fe");
       wood.addColorStop(0.08, "#7c3aed");
@@ -1613,6 +2283,13 @@
       clone: ["#e2e8f0", "#f8fafc", "#64748b", "rgba(203,213,225,0.95)", "#0f172a"],
       gate: ["#ff2ea6", "#f8fafc", "#2ee7ff", "rgba(46,231,255,0.95)", "#2e1065"],
       drill: ["#fb923c", "#fff7ed", "#ea580c", "rgba(251,146,60,0.95)", "#1c1917"],
+      boomerang: ["#fde68a", "#fffbeb", "#d97706", "rgba(251,191,36,0.95)", "#78350f"],
+      random: ["#f8fafc", "#334155", "#e2e8f0", "rgba(248,250,252,0.95)", "#0f172a"],
+      spike: ["#e2e8f0", "#f8fafc", "#64748b", "rgba(203,213,225,0.95)", "#1e293b"],
+      katana: ["#fff", "#fecaca", "#991b1b", "rgba(254,202,202,0.95)", "#1c1917"],
+      rocket: ["#fde68a", "#fff7ed", "#ea580c", "rgba(251,146,60,0.95)", "#7f1d1d"],
+      popcorn: ["#fde68a", "#fffbeb", "#f59e0b", "rgba(253,230,138,0.95)", "#78350f"],
+      whirlpool: ["#e0f2fe", "#f0f9ff", "#0284c7", "rgba(125,211,252,0.95)", "#082f49"],
     }[kind] || ["#c4b5fd", "#f8fafc", "#ff2ea6", "rgba(255,46,166,0.9)", "#11060f"];
     ctx.fillStyle = tint[0];
     ctx.fillRect(0, -3.4, 9, 6.8);
@@ -1642,6 +2319,68 @@
     ctx.fill();
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     ctx.fillRect(396, -7, 26, 3);
+    if (kind === "random") {
+      ctx.save();
+      ctx.translate(78, 0);
+      ctx.rotate(-ang);
+      ctx.fillStyle = "#0f172a";
+      ctx.beginPath();
+      ctx.arc(0, 0, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "700 18px Rajdhani, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("?", 0, 1);
+      ctx.restore();
+    }
+    ctx.restore();
+  };
+
+  const drawSpikes = (ball) => {
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+    ctx.rotate(clock * 3);
+    ctx.fillStyle = "#f8fafc";
+    ctx.strokeStyle = "#334155";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i += 1) {
+      ctx.rotate(Math.PI / 4);
+      ctx.beginPath();
+      ctx.moveTo(R * 0.15, -3.2);
+      ctx.lineTo(R + 11, 0);
+      ctx.lineTo(R * 0.15, 3.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+
+  const drawSlash = (slash, alpha) => {
+    ctx.save();
+    ctx.translate(slash.x, slash.y);
+    ctx.rotate(slash.ang || 0);
+    ctx.globalAlpha = alpha;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(127, 29, 29, 0.9)";
+    ctx.lineWidth = 26;
+    ctx.beginPath();
+    ctx.moveTo(-92, 26);
+    ctx.quadraticCurveTo(-4, -6, 98, -30);
+    ctx.stroke();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 5;
+    ctx.shadowColor = "#fff";
+    ctx.shadowBlur = 18;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(254, 202, 202, 0.95)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-70, 14);
+    ctx.quadraticCurveTo(0, -2, 74, -18);
+    ctx.stroke();
     ctx.restore();
   };
 
@@ -1864,6 +2603,84 @@
     ctx.restore();
   };
 
+  const drawPuddles = (w) => {
+    w.caught.forEach((bit, index) => {
+      const show = clamp((w.t - 0.2 - index * 0.12) / 0.45, 0, 1);
+      if (show <= 0) return;
+      const spot = bit.spot;
+      ctx.save();
+      ctx.translate(spot.x, spot.y);
+      ctx.rotate(spot.rot || 0);
+      ctx.fillStyle = `rgba(8, 47, 73, ${0.95 * show})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, spot.rx, spot.ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(125, 211, 252, ${0.45 * show})`;
+      ctx.beginPath();
+      ctx.ellipse(-spot.rx * 0.18, -spot.ry * 0.22, spot.rx * 0.48, spot.ry * 0.32, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(224, 242, 254, ${0.7 * show})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, spot.rx + 3, spot.ry + 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    });
+  };
+
+  const drawWhirl = (w) => {
+    const open = clamp(w.open == null ? 1 : w.open, 0, 1);
+    if (open < 0.03) return;
+    const radius = w.r * open;
+    ctx.save();
+    ctx.translate(w.x, w.y);
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.clip();
+    const water = ctx.createRadialGradient(0, 0, radius * 0.05, 0, 0, radius);
+    water.addColorStop(0, "#020617");
+    water.addColorStop(0.2, "#082f49");
+    water.addColorStop(0.58, "#075985");
+    water.addColorStop(0.86, "#0c4a6e");
+    water.addColorStop(1, "#042f3a");
+    ctx.fillStyle = water;
+    ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
+    ctx.rotate(w.t * 2.6);
+    ctx.strokeStyle = "rgba(224,242,254,0.38)";
+    ctx.lineWidth = 3.2;
+    ctx.beginPath();
+    for (let a = 0; a < Math.PI * 6.2; a += 0.2) {
+      const rad = (a / (Math.PI * 6.2)) * radius * 0.9;
+      const x = Math.cos(a) * rad;
+      const y = Math.sin(a) * rad;
+      if (a === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.rotate(-w.t * 4);
+    ctx.strokeStyle = "rgba(186,230,253,0.32)";
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 0.62, 0.2, 2.6);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(240,249,255,0.85)";
+    for (let i = 0; i < 12; i += 1) {
+      const a = i * 0.9 + w.t * 3;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * (radius * 0.9), Math.sin(a) * (radius * 0.9), 2 + (i % 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.translate(w.x, w.y);
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.max(2, radius - 2), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  };
+
   const drawSaw = () => {
     const d = shot && shot.drill;
     if (!d || d.launched || view !== "play") return;
@@ -1922,9 +2739,34 @@
       });
     }
     portals.forEach((portal) => drawPortal(portal));
+    if (shot && shot.whirl && !shot.whirl.done) drawWhirl(shot.whirl);
     balls.forEach((ball) => {
-      if (ball.in && !(phase === "place" && ball.id === 0)) drawBall(ball);
+      if (ball.in && !(phase === "place" && ball.id === 0) && (ball.sink || 0) < 0.98) drawBall(ball);
     });
+    if (balls[0] && balls[0].in && ((phase === "aim" && sticks[player] === "spike") || (phase === "run" && shot && shot.stick === "spike" && !balls[0].spikeBoom))) {
+      drawSpikes(balls[0]);
+    }
+    if (view === "play" && phase === "run" && shot && shot.cuts) {
+      shot.cuts.forEach((cut) => {
+        if (cut.done) return;
+        const ball = balls.find((item) => item.id === cut.id && item.in);
+        if (!ball) return;
+        const u = clamp(cut.t / 1, 0, 1);
+        ctx.save();
+        ctx.translate(ball.x, ball.y);
+        ctx.strokeStyle = `rgba(255,255,255,${0.35 + u * 0.6})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, R + 18 - u * 12, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(153,27,27,0.9)";
+        ctx.beginPath();
+        ctx.arc(0, 0, R + 8, -Math.PI * 0.2, Math.PI * (1.4 * u));
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+    slashes.forEach((slash) => drawSlash(slash, Math.max(0, slash.life / slash.max)));
     if (view === "play" && phase === "place") {
       ctx.save();
       ctx.strokeStyle = "rgba(255,255,255,0.95)";
@@ -1989,6 +2831,30 @@
             dir: mark.dir,
           });
         });
+      }
+      if (guide.cuts) {
+        guide.cuts.forEach((mark) => drawSlash({ x: mark.x, y: mark.y, ang: -0.7 }, 0.55));
+      }
+      if (guide.pops) {
+        guide.pops.forEach((mark) => {
+          ctx.save();
+          ctx.translate(mark.x, mark.y);
+          ctx.strokeStyle = "#fde68a";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, -16, 11, Math.PI * 0.15, Math.PI * 0.85);
+          ctx.stroke();
+          ctx.fillStyle = "#fb923c";
+          ctx.beginPath();
+          ctx.arc(-6, -30, 3, 0, Math.PI * 2);
+          ctx.arc(6, -36, 2.3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+      }
+      if (guide.whirl) {
+        drawWhirl({ x: guide.whirl.x, y: guide.whirl.y, r: 96, t: clock, open: 0.9, caught: [] });
+        (guide.whirl.paths || []).forEach((path) => strokePath(path, "rgba(224,242,254,0.96)", 2.2, "rgba(56,189,248,0.8)"));
       }
       if (guide.drill) {
         const mark = guide.drill;
@@ -2181,7 +3047,7 @@
         <p class="ttt-kicker">Player ${who + 1}</p>
         <h2>Choose a stick</h2>
         <div class="stick-row">
-          ${stickCard("light", "Light", "Each hit bends toward the nearest ball ahead. If that ball is behind the one you hit, the shot stays straight.", "light")}
+          ${stickCard("light", "Light", "The white ball bends toward the nearest ball farther ahead and speeds up each time it locks onto a new one, up to 5 times. After each hit it keeps that speed for 1 second. It will not chase the ball it just hit.", "light")}
           ${stickCard("mischief", "Mischievous", "A cut shot curves to the side you hit. The aim line bends with it.", "mischief")}
           ${stickCard("trick", "Trickshot", "No aim line. Hold a full pull for 2 seconds and the tip becomes a red orb that fires the white ball at triple speed.", "trick")}
           ${stickCard("frost", "Frostbite", "The white ball leaves a thick ice trail for 5 seconds while the balls are moving. Balls on the ice slide. An iced ball, other than the white one, hides its path.", "frost")}
@@ -2191,6 +3057,13 @@
           ${stickCard("clone", "Clone", "Two aim lines leave at different angles. The grey one is a clone. Each can hit or bounce only once.", "clone")}
           ${stickCard("gate", "Gate", "Balls the white one hits drop through a portal every half second, five times, to a random spot and a new direction. Every ball it hits does it.", "gate")}
           ${stickCard("drill", "Drill", "The first ball the white one hits gets a close-up. The white ball saws into it for 2 seconds, then both launch apart.", "drill")}
+          ${stickCard("boomerang", "Boomerang", "The white ball flies out, then arcs into a U-turn and comes back to where you shot it. The aim line shows the return.", "boomerang")}
+          ${stickCard("random", "Random", "A question mark. Every shot borrows a different stick. The aim line stays normal, so you will not see which trick you got.", "random")}
+          ${stickCard("spike", "Spike", "The white ball grows spikes. Balls it touches stick on, and it holds 1.5× speed until the next one. After enough are stuck it slows down and pops, throwing them back the way they came. The 8 never sticks. If fewer than 3 other balls are left, it pops after the first.", "spike")}
+          ${stickCard("katana", "Katana", "Balls the white one hits wait one second, then a slash flings them in a random direction.", "katana")}
+          ${stickCard("rocket", "Rocket", "The white ball lights up and speeds up for a second, with a fire trail. The aim line shows the burn.", "rocket")}
+          ${stickCard("popcorn", "Popcorn", "Every ball the white one hits hops into the air and comes down a short random distance away.", "popcorn")}
+          ${stickCard("whirlpool", "Whirlpool", "The first ball the white one hits opens a whirlpool. Nearby balls spin in and vanish, then the pool explodes and throws them out in an even star. The aim line shows those paths.", "whirlpool")}
         </div>
       </section>`;
   };
@@ -2318,9 +3191,10 @@
     cam.y += (cam.ty - cam.y) * blend;
     cam.cinema += ((cam.bars || 0) - cam.cinema) * blend;
     cam.flash = Math.max(0, cam.flash - dt * 1.7);
-    if (!(shot && shot.drill && !shot.drill.launched)) cam.shake *= Math.exp(-dt * 3.4);
+    if (!(shot && ((shot.drill && !shot.drill.launched) || (shot.whirl && !shot.whirl.done)))) cam.shake *= Math.exp(-dt * 3.4);
     if (view === "play" && phase === "run" && shot) {
-      if (shot.drill && !shot.drill.launched) holdDrill(dt);
+      if (shot.whirl && !shot.whirl.done) holdWhirl(dt);
+      else if (shot.drill && !shot.drill.launched) holdDrill(dt);
       else step(balls, dt, liveHooks, shot.stick);
       if (shot.stick === "frost" && balls[0] && balls[0].in) {
         const cue = balls[0];
@@ -2354,7 +3228,7 @@
           r: 1.8,
         });
       }
-      if (shot && shot.stick === "gate" && shot.gated && !(shot.drill && !shot.drill.launched)) {
+      if (shot && shot.stick === "gate" && shot.gated && !(shot.drill && !shot.drill.launched) && !(shot.whirl && !shot.whirl.done)) {
         for (let g = shot.gated.length - 1; g >= 0; g -= 1) {
           const gate = shot.gated[g];
           const ball = balls.find((item) => item.id === gate.id && item.in);
@@ -2381,8 +3255,38 @@
         }
       }
       dropClone();
+      if (shot && shot.stick === "katana" && shot.cuts) {
+        shot.cuts.forEach((cut) => {
+          if (cut.done) return;
+          const ball = balls.find((item) => item.id === cut.id && item.in);
+          if (!ball) {
+            cut.done = true;
+            return;
+          }
+          cut.t += dt;
+          if (cut.t < 1) return;
+          cut.done = true;
+          const ang = Math.random() * Math.PI * 2;
+          const spd = Math.max(900, Math.hypot(ball.vx, ball.vy));
+          ball.vx = Math.cos(ang) * spd;
+          ball.vy = Math.sin(ang) * spd;
+          ball.flash = 0.7;
+          slashes.push({ x: ball.x, y: ball.y, ang, life: 0.42, max: 0.42 });
+          spark(ball.x, ball.y, "#fff", 16, 360, ang);
+          spark(ball.x, ball.y, "#fecaca", 12, 240, ang + Math.PI);
+          ring(ball.x, ball.y, "#fff", 54);
+          cam.shake = Math.max(cam.shake, 11);
+          cam.flash = Math.max(cam.flash, 0.45);
+          sweep(180, 920, 0.16, "sawtooth", 0.04);
+          tone(720, 0.08, "square", 0.04);
+          crack(0.08, 0.05, 1400);
+        });
+      }
       const gating = shot && shot.gated && shot.gated.some((gate) => gate.left > 0);
-      if (shot && !(shot.drill && !shot.drill.launched) && !gating && settled()) resolve();
+      const cutting = shot && shot.cuts && shot.cuts.some((cut) => !cut.done);
+      const popping = balls.some((ball) => ball.pop);
+      const whirling = shot.whirl && !shot.whirl.done;
+      if (shot && !(shot.drill && !shot.drill.launched) && !gating && !cutting && !popping && !whirling && settled()) resolve();
     }
     if (beam) {
       beam.life -= dt;
@@ -2391,6 +3295,10 @@
     for (let i = portals.length - 1; i >= 0; i -= 1) {
       portals[i].life -= dt;
       if (portals[i].life <= 0) portals.splice(i, 1);
+    }
+    for (let i = slashes.length - 1; i >= 0; i -= 1) {
+      slashes[i].life -= dt;
+      if (slashes[i].life <= 0) slashes.splice(i, 1);
     }
     for (let i = shocks.length - 1; i >= 0; i -= 1) {
       shocks[i].life -= dt;
@@ -2456,6 +3364,9 @@
       if (sticks[player] === "tempest" && Math.random() < 0.7) burst(tipX, tipY, "#a5f3fc", 1, 30);
       if (sticks[player] === "ferris" && Math.random() < 0.7) burst(tipX, tipY, "#fbbf24", 1, 26);
       if (sticks[player] === "laser" && Math.random() < 0.55) burst(tipX, tipY, "#22d3ee", 1, 34);
+      if (sticks[player] === "rocket" && Math.random() < 0.8) burst(tipX, tipY, "#fb923c", 1, 34);
+      if (sticks[player] === "popcorn" && Math.random() < 0.7) burst(tipX, tipY, "#fde68a", 1, 26);
+      if (sticks[player] === "whirlpool" && Math.random() < 0.7) burst(tipX, tipY, "#38bdf8", 1, 30);
       if (sticks[player] === "trick" && fullPull) {
         const spin = Math.random() * Math.PI * 2;
         const reach = 18 + (1 - Math.min(1, charge / 2)) * 46;
