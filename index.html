@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=online">
+  <link rel="stylesheet" href="styles.css?v=bsnet">
 </head>
 <body>
   <div class="splash" id="splash">
@@ -69,6 +69,18 @@
           </div>
           <h2>Rebound</h2>
           <p>Build a top. Launch it. First to three.</p>
+          <span class="soon soon-play">Play</span>
+        </button>
+
+        <button class="card card-play" type="button" id="open-battle">
+          <div class="card-icon" aria-hidden="true">
+            <svg viewBox="0 0 64 64">
+              <path d="M32 6 L38 18 H48 L43 54 H21 L16 18 H26 Z"></path>
+              <path d="M32 18 V50 M22 30 H42 M22 40 H42"></path>
+            </svg>
+          </div>
+          <h2>Battleships</h2>
+          <p>Five ships. Patch a hit. Missiles are rare.</p>
           <span class="soon soon-play">Play</span>
         </button>
 
@@ -160,5 +172,12 @@
     <div class="rebound-root" id="rebound-root"></div>
   </div>
   <script src="rebound.js?v=online"></script>
+  <div class="bs" id="battle" hidden>
+    <div class="bs-root" id="battle-root"></div>
+    <div class="bs-call" id="battle-call" hidden></div>
+    <div class="bs-loot" id="battle-loot" hidden></div>
+    <div class="bs-fx" id="battle-fx" hidden></div>
+  </div>
+  <script src="battleship.js?v=bsnet"></script>
 </body>
 </html>
